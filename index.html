@@ -604,7 +604,7 @@ body{background:#f4f5f7}
       <button class="range-btn active" data-range="ALL">TODO</button>
     </div>
     <div class="hero-grid">
-      <div class="hero-mini"><span>Stake recomendado · 5%</span><strong id="recommendedStake">$50.00</strong></div>
+      <div class="hero-mini"><span>Stake recomendado · <b id="riskLabel">5%</b></span><strong id="recommendedStake">$50.00</strong></div>
       <div class="hero-mini"><span>Riesgo abierto</span><strong id="openRisk">$0.00</strong></div>
       <div class="hero-mini"><span>Profit total</span><strong id="profitTotal">$0.00</strong></div>
     </div>
@@ -770,7 +770,7 @@ body{background:#f4f5f7}
       <label class="field">Notas<textarea id="fNotes" placeholder="Razón, contexto, lesión, modelo, etc."></textarea></label>
 
       <div class="calc-box glass">
-        <div class="calc-item"><span>Stake 5%</span><strong id="calcFive">$0.00</strong></div>
+        <div class="calc-item"><span>Stake <b id="calcRiskLabel">5%</b></span><strong id="calcFive">$0.00</strong></div>
         <div class="calc-item"><span>Ganancia si WIN</span><strong id="calcProfit">$0.00</strong></div>
         <div class="calc-item"><span>Payout total</span><strong id="calcPayout">$0.00</strong></div>
       </div>
@@ -790,7 +790,7 @@ body{background:#f4f5f7}
   "use strict";
 
   const KEY = "bankroll_pro_sports_manager_v1";
-  const DEFAULT = { initialBankroll: 1000, bets: [] };
+  const DEFAULT = { initialBankroll: 1000, riskPercent: 5, bets: [] };
   const $ = id => document.getElementById(id);
   const clone = obj => JSON.parse(JSON.stringify(obj));
 
@@ -806,9 +806,10 @@ body{background:#f4f5f7}
       const parsed = JSON.parse(raw);
       if(!parsed || !Array.isArray(parsed.bets)) return clone(DEFAULT);
       return {
-        initialBankroll: Number(parsed.initialBankroll) || 1000,
-        bets: parsed.bets
-      };
+         initialBankroll: Number(parsed.initialBankroll) || 1000,
+         riskPercent: Number(parsed.riskPercent) || 5,
+         bets: parsed.bets
+       };
     }catch(e){
       return clone(DEFAULT);
     }
@@ -853,7 +854,7 @@ body{background:#f4f5f7}
   }
 
   function recommendedStake(){
-    return Math.max(0, bankroll() * 0.05);
+    return Math.max(0, bankroll() * (state.riskPercent / 100));
   }
 
   function openRisk(){
@@ -975,8 +976,10 @@ body{background:#f4f5f7}
     $("healthDelta").textContent = money(br-state.initialBankroll);
     $("healthDelta").className = br-state.initialBankroll>0?'green':br-state.initialBankroll<0?'red':'';
     $("healthRisk").textContent = money(openRisk());
-    $("healthStake").textContent = money(br*.05);
-
+    $("healthStake").textContent = money(recommendedStake());
+    $("riskLabel").textContent = state.riskPercent + "%";
+    $("calcRiskLabel").textContent = state.riskPercent + "%";
+    
     const bestObj = settled.length ? [...settled].sort((a,b)=>betDelta(b)-betDelta(a))[0] : null;
     const worstObj = settled.length ? [...settled].sort((a,b)=>betDelta(a)-betDelta(b))[0] : null;
     if($("dashBestBet")){
@@ -1054,8 +1057,9 @@ body{background:#f4f5f7}
     $("worstLossStreak").textContent = s.worstL + "L";
     $("bestBetLine").textContent = money(s.bestBet);
     $("worstBetLine").textContent = money(s.worstBet);
-
+    
     $("initialBankrollInput").value = Number(state.initialBankroll).toFixed(2);
+    $("riskPercentInput").value = state.riskPercent;
 
     renderBets();
     renderChart();
@@ -1360,15 +1364,25 @@ body{background:#f4f5f7}
 
   $("saveSettings").addEventListener("click", () => {
     const v = Number($("initialBankrollInput").value);
+    const risk = Number($("riskPercentInput").value);
+
     if(!Number.isFinite(v) || v < 0){
       toast("Bankroll inválido");
       return;
     }
+
+    if(!Number.isFinite(risk) || risk <= 0 || risk > 100){
+      toast("Porcentaje de riesgo inválido");
+      return;
+    }
+
     state.initialBankroll = v;
+    state.riskPercent = risk;
+
     save();
     render();
-    toast("Bankroll inicial actualizado");
-  });
+    toast("Configuración actualizada");
+});
 
   $("exportBtn").addEventListener("click", () => {
     const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
