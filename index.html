@@ -1648,13 +1648,28 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
     return [...new Set(arr.map(x=>String(x||"").trim()).filter(Boolean))];
   }
 
+  function mergeOCRTexts(...texts){
+    const all=[];
+    texts.forEach(t=>{
+      normalizeOCR(t).split("\n").map(x=>x.trim()).filter(Boolean).forEach(line=>{
+        const key=line.toLowerCase().replace(/\s+/g," ").trim();
+        if(!all.some(x=>x.key===key)) all.push({key,line});
+      });
+    });
+    return all.map(x=>x.line).join("\n");
+  }
+
   function badTicketLine(line){
     return /(?:^id\s*:|share\b|hide selections|show selections|copy\b|receipt\b|ticket id|bet id|sportsbook|winner\b|cash out|wager\b|paid\b|payout\b|potential|balance\b|account\b)/i.test(line);
   }
 
   function looksLikeEvent(line){
     if(!line || badTicketLine(line) || /\$/.test(line)) return false;
-    return /\b(?:vs\.?|versus|@| at )\b/i.test(" "+line+" ");
+    const clean=String(line).replace(/\s+/g," ").trim();
+    // Supports: Cardinals @ Cubs, Lakers vs Celtics, Orioles at Rays
+    if(/[A-Za-z]{2,}.+@.+[A-Za-z]{2,}/.test(clean)) return true;
+    if(/[A-Za-z]{2,}.+\b(?:vs\.?|versus|at)\b.+[A-Za-z]{2,}/i.test(clean)) return true;
+    return false;
   }
 
   function looksLikeSelection(line){
@@ -1799,10 +1814,39 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
     }
 
     // Event(s): ONLY real matchup-looking lines. Never IDs, Share, etc.
-    const eventLines=uniq(lines.filter(looksLikeEvent));
+    let eventLines=uniq(lines.filter(looksLikeEvent));
+
+    // OCR sometimes breaks a matchup across adjacent lines:
+    // "Cardinals @" + "Cubs" or "Orioles" + "@ Rays".
+    if(!eventLines.length || (out.legs && eventLines.length < out.legs)){
+      const reconstructed=[];
+      for(let i=0;i<lines.length-1;i++){
+        const a=lines[i], b=lines[i+1];
+        if(badTicketLine(a) || badTicketLine(b) || /\$/.test(a+b)) continue;
+
+        const combo=(a+" "+b).replace(/\s+/g," ").trim();
+        if(looksLikeEvent(combo)) reconstructed.push(combo);
+
+        // Team line followed by "@ Team" line.
+        if(/^[A-Za-z][A-Za-z .'-]{1,35}$/.test(a) && /^@\s*[A-Za-z][A-Za-z .'-]{1,35}$/.test(b)){
+          reconstructed.push((a+" "+b).trim());
+        }
+        // "Team @" followed by team line.
+        if(/^[A-Za-z][A-Za-z .'-]{1,35}\s+@$/.test(a) && /^[A-Za-z][A-Za-z .'-]{1,35}$/.test(b)){
+          reconstructed.push((a+" "+b).trim());
+        }
+      }
+      eventLines=uniq([...eventLines,...reconstructed]);
+    }
+
+    // Keep only the expected number of matchups for parlays when known.
+    if(out.legs && eventLines.length > out.legs){
+      eventLines=eventLines.slice(0,out.legs);
+    }
+
     if(eventLines.length){
-      // For parlays, concatenate all visible matchups so all teams are preserved.
-      out.event=eventLines.join(" • ");
+      // Use hyphen between separate games as requested.
+      out.event=eventLines.join(" - ");
       out.found.push("evento");
     }
 
@@ -1929,37 +1973,36 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
       const processed=await preprocessTicketImage(file);
 
       let lastPct=0;
-      const ocr=await runOCR(processed,m=>{
+      const processedOCR=await runOCR(processed,m=>{
         if(m.status==="recognizing text"){
           const progress=Math.max(5,Math.round((m.progress||0)*100));
           lastPct=progress;
-          bar.style.width=progress+"%";
+          bar.style.width=Math.min(55,Math.round(progress*.55))+"%";
           title.textContent="Leyendo ticket…";
-          status.textContent=`Reconociendo datos ${progress}%`;
+          status.textContent=`Primera lectura ${progress}%`;
         }else if(m.status){
           title.textContent="Analizando ticket…";
           status.textContent=m.status;
         }
       });
 
-      let text=normalizeOCR(ocr.text||"");
+      // Always perform a second pass on the original image.
+      // This is slower, but it recovers grey matchup/team text that can disappear
+      // during the high-contrast preprocessing.
+      status.textContent="Buscando equipos y partidos…";
+      const originalOCR=await runOCR(file,m=>{
+        if(m.status==="recognizing text"){
+          const p=Math.round((m.progress||0)*100);
+          bar.style.width=(55 + Math.round(p*.40))+"%";
+        }
+      });
 
-      // If high-contrast OCR is unusually sparse, retry the original image.
-      if(text.length<35){
-        status.textContent="Haciendo una segunda lectura…";
-        const rawOCR=await runOCR(file,m=>{
-          if(m.status==="recognizing text"){
-            const p=Math.round((m.progress||0)*100);
-            bar.style.width=Math.max(lastPct,p)+"%";
-          }
-        });
-        const rawText=normalizeOCR(rawOCR.text||"");
-        if(rawText.length>text.length) text=rawText;
-      }
-
+      const text=mergeOCRTexts(processedOCR.text||"", originalOCR.text||"");
       if(!text || text.length<4) throw new Error("NO_TEXT");
 
       const parsed=parseTicketText(text);
+      // Use the better of both OCR confidence values for display only.
+      const displayConfidence=Math.max(processedOCR.confidence||0, originalOCR.confidence||0);
       lastScanMeta=parsed;
       applyScannedTicket(parsed);
       renderScanDetected(parsed);
@@ -1980,17 +2023,24 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
         result.textContent="Lectura parcial. Completé únicamente los datos que aparecen con suficiente claridad.";
       }
 
+      const warnings=[];
       if(parsed.missingTeams){
+        warnings.push(`Parlay${parsed.legs ? " de "+parsed.legs+" selecciones" : ""} detectado, pero no pude leer todos los equipos/partidos. Si el ticket los muestra, intenta otra captura más nítida o con las selecciones expandidas.`);
+      }
+      if(!parsed.sport){
+        warnings.push("No pude identificar el deporte automáticamente. Selecciona manualmente el deporte que corresponde antes de guardar la apuesta.");
+      }
+      if(!parsed.book){
+        warnings.push("No pude confirmar la casa de apuestas. Selecciónala o escríbela manualmente.");
+      }
+      if(warnings.length){
         guide.classList.add("show");
-        guide.textContent=`Parlay${parsed.legs ? " de "+parsed.legs+" selecciones" : ""} detectado, pero los equipos/partidos no aparecen en esta captura. Expande las selecciones del ticket y toma una captura donde se vean todos los matchups para rellenar el campo Evento automáticamente.`;
-      }else if(!parsed.book){
-        guide.classList.add("show");
-        guide.textContent="No pude confirmar la casa de apuestas por el texto de la imagen. Puedes escribirla manualmente o usar una captura donde se vea claramente el logo/nombre.";
+        guide.textContent=warnings.join(" ");
       }
 
       raw.textContent="Texto leído del ticket:\n\n"+text;
       raw.classList.add("show");
-      status.textContent=`OCR completado · ${Math.round(ocr.confidence||0)}% de confianza de lectura`;
+      status.textContent=`OCR completado · ${Math.round(displayConfidence||0)}% de confianza de lectura`;
       toast(enough ? "Ticket rellenado automáticamente" : "Ticket leído: revisa lo pendiente");
     }catch(err){
       console.error("Ticket scanner:",err);
