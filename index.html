@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="BankRoll">
 <title>BankRoll</title>
 <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js" defer></script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="BankRoll">
@@ -778,6 +779,65 @@ html[data-theme="dark"] .topbar::after{
   .calc-item strong{font-size:11px}
 }
 
+
+/* ===== Ticket Scanner / OCR ===== */
+.ticket-scan{
+  border:1px solid rgba(17,163,106,.16);
+  background:linear-gradient(145deg,rgba(235,251,243,.92),rgba(255,255,255,.84));
+  border-radius:18px;
+  padding:12px;
+  display:grid;
+  gap:9px;
+}
+.ticket-scan-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.ticket-scan-title{display:flex;align-items:center;gap:9px;min-width:0}
+.ticket-scan-icon{
+  width:34px;height:34px;border-radius:11px;background:#111318;color:#fff;
+  display:grid;place-items:center;font-size:16px;flex:0 0 auto
+}
+.ticket-scan-title strong{display:block;font-size:10px}
+.ticket-scan-title small{display:block;color:var(--muted);font-size:7.5px;margin-top:2px;line-height:1.3}
+.ticket-scan-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.scan-btn{
+  min-height:40px;border-radius:12px;border:1px solid var(--line-strong);
+  background:rgba(255,255,255,.84);color:var(--text);font-size:8.5px;font-weight:850
+}
+.scan-btn.primary{background:#111318;color:#fff;border-color:#111318}
+.ticket-preview{
+  display:none;grid-template-columns:64px 1fr;gap:10px;align-items:center;
+  padding:8px;border-radius:13px;background:rgba(255,255,255,.62);border:1px solid var(--line)
+}
+.ticket-preview.show{display:grid}
+.ticket-preview img{width:64px;height:64px;border-radius:10px;object-fit:cover;background:#e9edf1}
+.scan-status{font-size:8px;line-height:1.4;color:var(--muted)}
+.scan-status strong{display:block;color:var(--text);font-size:9px;margin-bottom:2px}
+.scan-progress{height:5px;border-radius:99px;background:rgba(17,19,24,.08);overflow:hidden;margin-top:6px}
+.scan-progress > i{display:block;height:100%;width:0;background:var(--green);border-radius:99px;transition:width .18s ease}
+.scan-result{
+  display:none;padding:9px 10px;border-radius:12px;background:var(--green-soft);
+  border:1px solid rgba(17,163,106,.14);font-size:8px;color:var(--green);font-weight:800;line-height:1.45
+}
+.scan-result.show{display:block}
+.scan-result.warn{background:var(--amber-soft);border-color:rgba(183,134,33,.16);color:var(--amber)}
+.scan-raw{
+  display:none;width:100%;max-height:100px;overflow:auto;white-space:pre-wrap;
+  font-size:7px;color:var(--muted);background:rgba(255,255,255,.55);border:1px solid var(--line);
+  border-radius:10px;padding:8px
+}
+.scan-raw.show{display:block}
+html[data-theme="dark"] .ticket-scan{
+  background:linear-gradient(145deg,rgba(35,108,68,.22),rgba(12,15,18,.90));
+  border-color:rgba(53,227,125,.14)
+}
+html[data-theme="dark"] .scan-btn{background:#0b0e11;border-color:rgba(255,255,255,.10);color:var(--text)}
+html[data-theme="dark"] .scan-btn.primary{background:#f4f6f7;color:#080a0c;border-color:#f4f6f7}
+html[data-theme="dark"] .ticket-preview,
+html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,255,.08)}
+@media(max-width:420px){
+  .ticket-scan-actions{grid-template-columns:1fr 1fr}
+  .ticket-scan{padding:10px}
+}
+
 </style>
 </head>
 <body>
@@ -957,6 +1017,38 @@ html[data-theme="dark"] .topbar::after{
       <button class="close-btn" id="closeModal">×</button>
     </div>
     <div class="form">
+      <section class="ticket-scan" id="ticketScanBox">
+        <div class="ticket-scan-head">
+          <div class="ticket-scan-title">
+            <div class="ticket-scan-icon">▣</div>
+            <div>
+              <strong>Escanear ticket</strong>
+              <small>Sube una captura o toma una foto. Los campos se rellenan automáticamente y siempre puedes corregirlos.</small>
+            </div>
+          </div>
+        </div>
+
+        <div class="ticket-scan-actions">
+          <button type="button" class="scan-btn primary" id="scanCameraBtn">📷 Usar cámara</button>
+          <button type="button" class="scan-btn" id="scanGalleryBtn">🖼 Elegir foto</button>
+        </div>
+
+        <input id="scanCameraInput" type="file" accept="image/*" capture="environment" hidden>
+        <input id="scanGalleryInput" type="file" accept="image/*" hidden>
+
+        <div class="ticket-preview" id="ticketPreview">
+          <img id="ticketPreviewImg" alt="Vista previa del ticket">
+          <div class="scan-status">
+            <strong id="scanStatusTitle">Listo para analizar</strong>
+            <span id="scanStatusText">Selecciona una imagen clara del ticket.</span>
+            <div class="scan-progress"><i id="scanProgressBar"></i></div>
+          </div>
+        </div>
+
+        <div class="scan-result" id="scanResult"></div>
+        <div class="scan-raw" id="scanRawText"></div>
+      </section>
+
       <div class="form-row">
         <label class="field">Deporte
           <select id="fSport">
@@ -1409,6 +1501,7 @@ html[data-theme="dark"] .topbar::after{
   }
 
   function openModal(b = null){
+    resetScannerUI();
     editingId = b?.id || null;
     $("modalTitle").textContent = b ? "Editar apuesta" : "Nueva apuesta";
     $("fSport").value = b?.sport || "NBA";
@@ -1448,6 +1541,252 @@ html[data-theme="dark"] .topbar::after{
     clearTimeout(window.__toast);
     window.__toast = setTimeout(() => $("toast").classList.remove("show"), 1800);
   }
+
+  /* ===== Escáner de ticket (OCR local en el navegador) ===== */
+  const SCAN_SPORTS = [
+    ["NBA",/\bNBA\b/i],["NFL",/\bNFL\b/i],["MLB",/\bMLB\b/i],["NHL",/\bNHL\b/i],
+    ["NCAAB",/\bNCAA(?:B| Basketball)?\b/i],["UFC",/\bUFC\b|MMA/i],
+    ["Tennis",/\bTennis\b|\bATP\b|\bWTA\b|\bTenis\b/i],
+    ["Soccer",/\bSoccer\b|\bFootball\b|\bFútbol\b|\bFutbol\b|\bLaLiga\b|\bPremier League\b|\bMLS\b|\bUEFA\b/i]
+  ];
+  const SCAN_BOOKS = [
+    ["FanDuel",/fan\s*duel/i],["DraftKings",/draft\s*kings/i],["BetMGM",/bet\s*mgm/i],
+    ["Caesars",/caesars/i],["Hard Rock Bet",/hard\s*rock\s*bet/i],["bet365",/bet\s*365/i],
+    ["ESPN BET",/espn\s*bet/i],["Fanatics",/fanatics/i]
+  ];
+
+  function resetScannerUI(){
+    const p=$("ticketPreview"), r=$("scanResult"), raw=$("scanRawText"), bar=$("scanProgressBar");
+    if(p) p.classList.remove("show");
+    if(r){ r.classList.remove("show","warn"); r.textContent=""; }
+    if(raw){ raw.classList.remove("show"); raw.textContent=""; }
+    if(bar) bar.style.width="0%";
+  }
+
+  function normalizeOCR(text){
+    return String(text||"")
+      .replace(/[–—−]/g,"-")
+      .replace(/[“”]/g,'"')
+      .replace(/[’]/g,"'")
+      .replace(/\r/g,"")
+      .replace(/[ \t]+/g," ")
+      .replace(/\n{3,}/g,"\n\n")
+      .trim();
+  }
+
+  function cleanMoney(v){
+    if(v==null) return null;
+    const n=Number(String(v).replace(/[$,\s]/g,""));
+    return Number.isFinite(n) ? n : null;
+  }
+
+  function cleanOdds(v){
+    if(v==null) return null;
+    let s=String(v).replace(/[Oo]/g,"0").replace(/\s/g,"").replace(/[^\d+-]/g,"");
+    if(!/^[+-]?\d{3,4}$/.test(s)) return null;
+    const n=Number(s);
+    if(!Number.isFinite(n) || (n>-100 && n<100) || Math.abs(n)>10000) return null;
+    return n;
+  }
+
+  function lineScoreEvent(line){
+    let score=0;
+    if(/\b(vs\.?|versus|@|at)\b/i.test(line)) score+=5;
+    if(/[A-Za-z]{3,}/.test(line)) score+=1;
+    if(/\b(NBA|NFL|MLB|NHL|UFC|stake|wager|odds|to win|payout|total|spread|moneyline)\b/i.test(line)) score-=3;
+    if(/\$|[+-]\d{3}/.test(line)) score-=2;
+    return score;
+  }
+
+  function parseTicketText(rawText){
+    const text=normalizeOCR(rawText);
+    const lines=text.split("\n").map(x=>x.trim()).filter(Boolean);
+    const lower=text.toLowerCase();
+    const out={sport:null,book:null,event:null,pick:null,odds:null,stake:null,date:null,time:null,confidence:0,found:[]};
+
+    for(const [sport,re] of SCAN_SPORTS){ if(re.test(text)){out.sport=sport;out.found.push("deporte");break;} }
+    for(const [book,re] of SCAN_BOOKS){ if(re.test(text)){out.book=book;out.found.push("sportsbook");break;} }
+
+    // Stake: prefer labelled money values.
+    const stakePatterns=[
+      /(?:wager|stake|risk|amount wagered|bet amount|apuesta|importe)\s*[:\-]?\s*\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
+      /\$\s*([\d,]+(?:\.\d{1,2})?)\s*(?:wager|stake)/i
+    ];
+    for(const re of stakePatterns){
+      const m=text.match(re); if(m){out.stake=cleanMoney(m[1]); if(out.stake>0){out.found.push("stake");break;}}
+    }
+
+    // Odds: use labelled odds first, then plausible standalone American odds.
+    const oddsPatterns=[
+      /(?:odds|cuota|american odds)\s*[:\-]?\s*([+-]\s*\d{3,4})/i,
+      /\b([+-]\s*\d{3,4})\b/
+    ];
+    for(const re of oddsPatterns){
+      const m=text.match(re); if(m){const o=cleanOdds(m[1]);if(o!=null){out.odds=o;out.found.push("cuota");break;}}
+    }
+
+    // Date / time when printed on the ticket.
+    let dm=text.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
+    if(dm) out.date=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;
+    if(!out.date){
+      dm=text.match(/\b(\d{1,2})[\/\-](\d{1,2})[\/\-](20\d{2})\b/);
+      if(dm){
+        const a=Number(dm[1]),b=Number(dm[2]);
+        const month=a<=12?a:b, day=a<=12?b:a;
+        out.date=`${dm[3]}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+      }
+    }
+    const tm=text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\s*(AM|PM)?\b/i);
+    if(tm){
+      let h=Number(tm[1]); const ap=(tm[3]||"").toUpperCase();
+      if(ap==="PM"&&h<12)h+=12;if(ap==="AM"&&h===12)h=0;
+      out.time=`${String(h).padStart(2,"0")}:${tm[2]}`;
+    }
+
+    // Event: best line containing vs/@/at.
+    const eventCandidates=lines
+      .map(line=>({line,score:lineScoreEvent(line)}))
+      .filter(x=>x.score>=4)
+      .sort((a,b)=>b.score-a.score);
+    if(eventCandidates.length){
+      out.event=eventCandidates[0].line
+        .replace(/\b(NBA|NFL|MLB|NHL|NCAAB|UFC)\b/ig,"").replace(/\s{2,}/g," ").trim();
+      out.found.push("evento");
+    }
+
+    // Pick: lines with common market terms, team + handicap, total or moneyline.
+    const pickRegex=/\b(moneyline|money line|ml\b|spread|handicap|total|over|under|o\/u|to win|1st half|first half|team total|player prop|points|rebounds|assists|touchdowns|goals|sets)\b/i;
+    let pickLine=lines.find(l=>pickRegex.test(l) && !/potential|payout|total return|total wager/i.test(l));
+    if(!pickLine){
+      pickLine=lines.find(l=>/[A-Za-z]{3,}.*(?:[+-]\d+(?:\.\d+)?|over\s+\d|under\s+\d)/i.test(l) && !/\$/.test(l));
+    }
+    if(pickLine){
+      out.pick=pickLine.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim();
+      out.found.push("selección");
+    }
+
+    // Fallback event from two adjacent team-like lines.
+    if(!out.event){
+      const banned=/wager|stake|odds|payout|to win|potential|receipt|sportsbook|bet slip|parlay|straight|balance|cash out/i;
+      const teamLines=lines.filter(l=>l.length>=4&&l.length<=70&&/[A-Za-z]{3}/.test(l)&&!banned.test(l)&&!/\$/.test(l)&&!^[+-]?\d+$/.test(l));
+      if(teamLines.length>=2){
+        out.event=teamLines.slice(0,2).join(" vs ");
+      }
+    }
+
+    // If pick still missing, choose a useful nearby non-event line.
+    if(!out.pick){
+      const candidate=lines.find(l=>
+        l!==out.event && l.length>=3 && l.length<=80 &&
+        /[A-Za-z]/.test(l) && !/wager|stake|payout|to win|receipt|balance|sportsbook/i.test(l) &&
+        !SCAN_BOOKS.some(([,re])=>re.test(l))
+      );
+      if(candidate) out.pick=candidate;
+    }
+
+    out.confidence=Math.min(100,Math.round(out.found.length/6*100));
+    return out;
+  }
+
+  function applyScannedTicket(data){
+    if(data.sport){
+      const option=[...$("fSport").options].find(o=>o.value.toLowerCase()===data.sport.toLowerCase());
+      if(option) $("fSport").value=option.value;
+    }
+    if(data.book) $("fBook").value=data.book;
+    if(data.event) $("fEvent").value=data.event;
+    if(data.pick) $("fPick").value=data.pick;
+    if(data.odds!=null) $("fOdds").value=data.odds;
+    if(data.stake!=null && data.stake>0) $("fStake").value=data.stake.toFixed(2);
+    if(data.date) $("fDate").value=data.date;
+    if(data.time) $("fTime").value=data.time;
+    updateCalc();
+  }
+
+  async function scanTicketFile(file){
+    if(!file || !file.type.startsWith("image/")){
+      toast("Selecciona una imagen del ticket");
+      return;
+    }
+    const preview=$("ticketPreview"), img=$("ticketPreviewImg"), title=$("scanStatusTitle"),
+          status=$("scanStatusText"), bar=$("scanProgressBar"), result=$("scanResult"), raw=$("scanRawText");
+
+    preview.classList.add("show");
+    result.classList.remove("show","warn");
+    raw.classList.remove("show");
+    bar.style.width="3%";
+    title.textContent="Preparando imagen…";
+    status.textContent="La lectura se realiza en tu navegador.";
+
+    const objectUrl=URL.createObjectURL(file);
+    img.src=objectUrl;
+
+    try{
+      if(typeof Tesseract==="undefined"){
+        throw new Error("OCR_NO_CARGADO");
+      }
+      const {data}=await Tesseract.recognize(file,"eng",{
+        logger:m=>{
+          if(m.status==="recognizing text"){
+            const progress=Math.max(5,Math.round((m.progress||0)*100));
+            bar.style.width=progress+"%";
+            title.textContent="Leyendo ticket…";
+            status.textContent=`Analizando texto ${progress}%`;
+          }else if(m.status){
+            title.textContent="Analizando ticket…";
+            status.textContent=m.status;
+          }
+        }
+      });
+
+      const text=normalizeOCR(data?.text||"");
+      if(!text || text.length<4) throw new Error("NO_TEXT");
+
+      const parsed=parseTicketText(text);
+      applyScannedTicket(parsed);
+
+      bar.style.width="100%";
+      title.textContent="Ticket analizado";
+      const labels=[];
+      if(parsed.book) labels.push(parsed.book);
+      if(parsed.sport) labels.push(parsed.sport);
+      if(parsed.odds!=null) labels.push((parsed.odds>0?"+":"")+parsed.odds);
+      if(parsed.stake!=null) labels.push(money(parsed.stake));
+
+      const enough=!!(parsed.event && parsed.pick && parsed.odds!=null && parsed.stake!=null);
+      result.classList.add("show");
+      result.classList.toggle("warn",!enough);
+      result.textContent=enough
+        ? `✓ Datos detectados${labels.length ? ": "+labels.join(" · ") : ""}. Revisa los campos y guarda la apuesta.`
+        : `Lectura parcial${labels.length ? ": "+labels.join(" · ") : ""}. Revisa y completa manualmente los campos que falten.`;
+
+      raw.textContent="Texto leído del ticket:\n\n"+text;
+      raw.classList.add("show");
+      status.textContent=`OCR completado · ${Math.round(data?.confidence||0)}% de confianza de lectura`;
+      toast(enough ? "Ticket rellenado automáticamente" : "Ticket leído: revisa los campos");
+    }catch(err){
+      console.error("Ticket scanner:",err);
+      bar.style.width="0%";
+      title.textContent="No pude leer este ticket";
+      status.textContent=err?.message==="OCR_NO_CARGADO"
+        ? "No se pudo cargar el motor OCR. Comprueba tu conexión a internet e inténtalo otra vez."
+        : "Prueba con una captura más nítida, sin recortes y con el texto completo.";
+      result.classList.add("show","warn");
+      result.textContent="Puedes continuar rellenando la apuesta manualmente.";
+      toast("No se pudo leer el ticket");
+    }finally{
+      setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+    }
+  }
+
+  $("scanCameraBtn").addEventListener("click",()=>$("scanCameraInput").click());
+  $("scanGalleryBtn").addEventListener("click",()=>$("scanGalleryInput").click());
+  $("scanCameraInput").addEventListener("change",e=>{
+    const file=e.target.files?.[0]; if(file) scanTicketFile(file); e.target.value="";
+  });
+  $("scanGalleryInput").addEventListener("change",e=>{
+    const file=e.target.files?.[0]; if(file) scanTicketFile(file); e.target.value="";
+  });
 
   $("openAdd").addEventListener("click", () => openModal());
   $("closeModal").addEventListener("click", closeModal);
