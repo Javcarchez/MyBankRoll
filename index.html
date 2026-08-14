@@ -1668,7 +1668,7 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
     // Fallback event from two adjacent team-like lines.
     if(!out.event){
       const banned=/wager|stake|odds|payout|to win|potential|receipt|sportsbook|bet slip|parlay|straight|balance|cash out/i;
-      const teamLines=lines.filter(l=>l.length>=4&&l.length<=70&&/[A-Za-z]{3}/.test(l)&&!banned.test(l)&&!/\$/.test(l)&&!^[+-]?\d+$/.test(l));
+      const teamLines=lines.filter(l=>l.length>=4&&l.length<=70&&/[A-Za-z]{3}/.test(l)&&!banned.test(l)&&!/\$/.test(l)&&!/^[+-]?\d+$/.test(l));
       if(teamLines.length>=2){
         out.event=teamLines.slice(0,2).join(" vs ");
       }
