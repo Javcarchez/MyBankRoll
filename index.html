@@ -711,9 +711,12 @@ body{background:#f4f5f7}
           <input id="initialBankrollInput" type="number" min="0" step="0.01">
         </div>
         <div class="setting">
-          <div><strong>Riesgo por apuesta</strong><small>Fijado al 5%.</small></div>
-          <input value="5%" disabled>
-        </div>
+          <div>
+             <strong>Riesgo por apuesta (%)</strong>
+             <small>Porcentaje del bankroll usado para calcular el stake.</small>
+           </div>
+           <input id="riskPercentInput" type="number" min="0.1" max="100" step="0.01" value="5">
+         </div>
         <button class="secondary" id="saveSettings" style="width:100%;margin-top:9px">Guardar bankroll inicial</button>
         <p class="note">WIN suma la ganancia neta. LOST resta el stake invertido. PUSH no cambia el bankroll. El siguiente 5% se recalcula automáticamente con el nuevo total.</p>
       </section>
