@@ -838,6 +838,36 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
   .ticket-scan{padding:10px}
 }
 
+
+.ticket-scan-icon svg{display:block}
+.scan-btn{display:flex;align-items:center;justify-content:center;gap:7px}
+.scan-btn svg{
+  width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto
+}
+.scan-guidance{
+  display:none;padding:9px 10px;border-radius:12px;background:#fff8e7;
+  border:1px solid rgba(183,134,33,.18);color:#8b681d;font-size:7.8px;
+  line-height:1.45;font-weight:750
+}
+.scan-guidance.show{display:block}
+.scan-detected{
+  display:none;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px
+}
+.scan-detected.show{display:grid}
+.scan-chip{
+  min-width:0;padding:8px;border-radius:11px;background:rgba(255,255,255,.68);
+  border:1px solid var(--line);font-size:7px;color:var(--muted)
+}
+.scan-chip strong{
+  display:block;color:var(--text);font-size:8.5px;margin-top:2px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+html[data-theme="dark"] .scan-guidance{
+  background:rgba(183,134,33,.10);border-color:rgba(231,182,77,.16);color:#e7b64d
+}
+html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,255,.08)}
+
 </style>
 </head>
 <body>
@@ -1020,7 +1050,12 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
       <section class="ticket-scan" id="ticketScanBox">
         <div class="ticket-scan-head">
           <div class="ticket-scan-title">
-            <div class="ticket-scan-icon">▣</div>
+            <div class="ticket-scan-icon" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M4 7.5h3l1.4-2h7.2l1.4 2h3v11H4z"/>
+        <circle cx="12" cy="13" r="3.5"/>
+      </svg>
+    </div>
             <div>
               <strong>Escanear ticket</strong>
               <small>Sube una captura o toma una foto. Los campos se rellenan automáticamente y siempre puedes corregirlos.</small>
@@ -1029,8 +1064,14 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
         </div>
 
         <div class="ticket-scan-actions">
-          <button type="button" class="scan-btn primary" id="scanCameraBtn">📷 Usar cámara</button>
-          <button type="button" class="scan-btn" id="scanGalleryBtn">🖼 Elegir foto</button>
+          <button type="button" class="scan-btn primary" id="scanCameraBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3l1.4-2h7.2l1.4 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg>
+      <span>Usar cámara</span>
+    </button>
+          <button type="button" class="scan-btn" id="scanGalleryBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><circle cx="9" cy="9" r="1.5"/><path d="m5.5 17 4.5-4.5 3.2 3.2 2.1-2.1 3.2 3.4"/></svg>
+      <span>Elegir foto</span>
+    </button>
         </div>
 
         <input id="scanCameraInput" type="file" accept="image/*" capture="environment" hidden>
@@ -1046,6 +1087,8 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
         </div>
 
         <div class="scan-result" id="scanResult"></div>
+        <div class="scan-guidance" id="scanGuidance"></div>
+        <div class="scan-detected" id="scanDetected"></div>
         <div class="scan-raw" id="scanRawText"></div>
       </section>
 
@@ -1542,25 +1585,37 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
     window.__toast = setTimeout(() => $("toast").classList.remove("show"), 1800);
   }
 
-  /* ===== Escáner de ticket (OCR local en el navegador) ===== */
+  /* ===== Escáner de ticket (OCR local + parser mejorado) ===== */
   const SCAN_SPORTS = [
     ["NBA",/\bNBA\b/i],["NFL",/\bNFL\b/i],["MLB",/\bMLB\b/i],["NHL",/\bNHL\b/i],
-    ["NCAAB",/\bNCAA(?:B| Basketball)?\b/i],["UFC",/\bUFC\b|MMA/i],
+    ["NCAAB",/\bNCAA(?:B| Basketball)?\b/i],["UFC",/\bUFC\b|\bMMA\b/i],
     ["Tennis",/\bTennis\b|\bATP\b|\bWTA\b|\bTenis\b/i],
     ["Soccer",/\bSoccer\b|\bFootball\b|\bFútbol\b|\bFutbol\b|\bLaLiga\b|\bPremier League\b|\bMLS\b|\bUEFA\b/i]
   ];
+
   const SCAN_BOOKS = [
-    ["FanDuel",/fan\s*duel/i],["DraftKings",/draft\s*kings/i],["BetMGM",/bet\s*mgm/i],
-    ["Caesars",/caesars/i],["Hard Rock Bet",/hard\s*rock\s*bet/i],["bet365",/bet\s*365/i],
-    ["ESPN BET",/espn\s*bet/i],["Fanatics",/fanatics/i]
+    ["Hard Rock Bet",/(?:hard\s*rock(?:\s*bet)?|rock\s*bet|hard\s*rock\s*bet\s*sportsbook)/i],
+    ["FanDuel",/fan\s*duel/i],
+    ["DraftKings",/draft\s*kings/i],
+    ["BetMGM",/bet\s*mgm/i],
+    ["Caesars",/caesars/i],
+    ["bet365",/bet\s*365/i],
+    ["ESPN BET",/espn\s*bet/i],
+    ["Fanatics",/fanatics/i]
   ];
 
+  let lastScanMeta = null;
+
   function resetScannerUI(){
-    const p=$("ticketPreview"), r=$("scanResult"), raw=$("scanRawText"), bar=$("scanProgressBar");
+    const p=$("ticketPreview"), r=$("scanResult"), raw=$("scanRawText"),
+          bar=$("scanProgressBar"), guide=$("scanGuidance"), detected=$("scanDetected");
     if(p) p.classList.remove("show");
     if(r){ r.classList.remove("show","warn"); r.textContent=""; }
+    if(guide){ guide.classList.remove("show"); guide.textContent=""; }
+    if(detected){ detected.classList.remove("show"); detected.innerHTML=""; }
     if(raw){ raw.classList.remove("show"); raw.textContent=""; }
     if(bar) bar.style.width="0%";
+    lastScanMeta=null;
   }
 
   function normalizeOCR(text){
@@ -1589,43 +1644,141 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
     return n;
   }
 
-  function lineScoreEvent(line){
-    let score=0;
-    if(/\b(vs\.?|versus|@|at)\b/i.test(line)) score+=5;
-    if(/[A-Za-z]{3,}/.test(line)) score+=1;
-    if(/\b(NBA|NFL|MLB|NHL|UFC|stake|wager|odds|to win|payout|total|spread|moneyline)\b/i.test(line)) score-=3;
-    if(/\$|[+-]\d{3}/.test(line)) score-=2;
-    return score;
+  function uniq(arr){
+    return [...new Set(arr.map(x=>String(x||"").trim()).filter(Boolean))];
+  }
+
+  function badTicketLine(line){
+    return /(?:^id\s*:|share\b|hide selections|show selections|copy\b|receipt\b|ticket id|bet id|sportsbook|winner\b|cash out|wager\b|paid\b|payout\b|potential|balance\b|account\b)/i.test(line);
+  }
+
+  function looksLikeEvent(line){
+    if(!line || badTicketLine(line) || /\$/.test(line)) return false;
+    return /\b(?:vs\.?|versus|@| at )\b/i.test(" "+line+" ");
+  }
+
+  function looksLikeSelection(line){
+    if(!line || badTicketLine(line)) return false;
+    if(/\$\s*\d/.test(line)) return false;
+    return /\b(?:over|under|moneyline|money line|\bML\b|spread|handicap|total|team total|player prop|points|rebounds|assists|goals|sets|touchdowns|first half|1st half)\b/i.test(line)
+      || /[A-Za-z]{2,}.*[+-]\d+(?:\.\d+)?/.test(line);
+  }
+
+  async function preprocessTicketImage(file){
+    const img=new Image();
+    const url=URL.createObjectURL(file);
+    try{
+      await new Promise((resolve,reject)=>{
+        img.onload=resolve; img.onerror=reject; img.src=url;
+      });
+
+      const maxW=1800;
+      const scale=Math.min(2.25,maxW/img.naturalWidth);
+      const w=Math.max(1,Math.round(img.naturalWidth*scale));
+      const h=Math.max(1,Math.round(img.naturalHeight*scale));
+      const canvas=document.createElement("canvas");
+      canvas.width=w;canvas.height=h;
+      const ctx=canvas.getContext("2d",{willReadFrequently:true});
+      ctx.drawImage(img,0,0,w,h);
+
+      const data=ctx.getImageData(0,0,w,h);
+      let sum=0;
+      for(let i=0;i<data.data.length;i+=4){
+        const r=data.data[i],g=data.data[i+1],b=data.data[i+2];
+        sum += 0.2126*r + 0.7152*g + 0.0722*b;
+      }
+      const avg=sum/(data.data.length/4);
+      const brightTextMode=avg<168;
+
+      // Ticket screenshots often use white text on colored/dark backgrounds.
+      // Convert to black text on white for OCR and increase contrast.
+      for(let i=0;i<data.data.length;i+=4){
+        const r=data.data[i],g=data.data[i+1],b=data.data[i+2];
+        const lum=0.2126*r+0.7152*g+0.0722*b;
+        let v;
+        if(brightTextMode){
+          v = lum > Math.max(155,avg+22) ? 0 : 255;
+        }else{
+          v = lum < Math.min(185,avg-18) ? 0 : 255;
+        }
+        data.data[i]=data.data[i+1]=data.data[i+2]=v;
+        data.data[i+3]=255;
+      }
+      ctx.putImageData(data,0,0);
+      return canvas;
+    }finally{
+      URL.revokeObjectURL(url);
+    }
   }
 
   function parseTicketText(rawText){
     const text=normalizeOCR(rawText);
     const lines=text.split("\n").map(x=>x.trim()).filter(Boolean);
-    const lower=text.toLowerCase();
-    const out={sport:null,book:null,event:null,pick:null,odds:null,stake:null,date:null,time:null,confidence:0,found:[]};
+    const out={
+      sport:null,book:null,event:null,pick:null,odds:null,stake:null,payout:null,
+      date:null,time:null,betType:null,legs:null,settledResult:null,
+      missingTeams:false,confidence:0,found:[]
+    };
 
-    for(const [sport,re] of SCAN_SPORTS){ if(re.test(text)){out.sport=sport;out.found.push("deporte");break;} }
-    for(const [book,re] of SCAN_BOOKS){ if(re.test(text)){out.book=book;out.found.push("sportsbook");break;} }
-
-    // Stake: prefer labelled money values.
-    const stakePatterns=[
-      /(?:wager|stake|risk|amount wagered|bet amount|apuesta|importe)\s*[:\-]?\s*\$?\s*([\d,]+(?:\.\d{1,2})?)/i,
-      /\$\s*([\d,]+(?:\.\d{1,2})?)\s*(?:wager|stake)/i
-    ];
-    for(const re of stakePatterns){
-      const m=text.match(re); if(m){out.stake=cleanMoney(m[1]); if(out.stake>0){out.found.push("stake");break;}}
+    for(const [sport,re] of SCAN_SPORTS){
+      if(re.test(text)){out.sport=sport;out.found.push("deporte");break;}
+    }
+    for(const [book,re] of SCAN_BOOKS){
+      if(re.test(text)){out.book=book;out.found.push("sportsbook");break;}
     }
 
-    // Odds: use labelled odds first, then plausible standalone American odds.
-    const oddsPatterns=[
-      /(?:odds|cuota|american odds)\s*[:\-]?\s*([+-]\s*\d{3,4})/i,
-      /\b([+-]\s*\d{3,4})\b/
-    ];
-    for(const re of oddsPatterns){
-      const m=text.match(re); if(m){const o=cleanOdds(m[1]);if(o!=null){out.odds=o;out.found.push("cuota");break;}}
+    // Bet type / parlay count
+    const parlay=text.match(/\b(\d+)\s*[- ]?\s*bet\s+parlay\b/i);
+    if(parlay){
+      out.legs=Number(parlay[1]);
+      out.betType=`Parlay de ${out.legs} selecciones`;
+      out.found.push("tipo");
+    }else if(/\bparlay\b/i.test(text)){
+      out.betType="Parlay";
+      out.found.push("tipo");
+    }else if(/\bstraight\b|\bsingle\b/i.test(text)){
+      out.betType="Apuesta simple";
     }
 
-    // Date / time when printed on the ticket.
+    // Settled state (informational only; we do not silently settle the bet)
+    if(/\bwinner\b|\bwager\s+paid\b|\bpaid\b/i.test(text)) out.settledResult="win";
+    else if(/\blost\b|\bloser\b|\bsettled\s*-\s*loss\b/i.test(text)) out.settledResult="loss";
+    else if(/\bpush\b|\bvoid\b/i.test(text)) out.settledResult="push";
+
+    // American odds
+    const labelledOdds=text.match(/(?:odds|cuota|american odds)\s*[:\-]?\s*([+-]\s*\d{3,4})/i);
+    if(labelledOdds) out.odds=cleanOdds(labelledOdds[1]);
+    if(out.odds==null){
+      const allOdds=[...text.matchAll(/(?:^|[\s(])([+-]\s*\d{3,4})(?=$|[\s)])/gm)]
+        .map(m=>cleanOdds(m[1])).filter(v=>v!=null);
+      if(allOdds.length) out.odds=allOdds[0];
+    }
+    if(out.odds!=null) out.found.push("cuota");
+
+    // Money amounts. Explicit labels first.
+    const wagerMatch=text.match(/(?:wager|stake|risk|amount wagered|bet amount|apuesta|importe)[\s\S]{0,45}?\$\s*([\d,]+(?:\.\d{1,2})?)/i);
+    if(wagerMatch) out.stake=cleanMoney(wagerMatch[1]);
+
+    const paidMatch=text.match(/(?:paid|payout|total return|returns?)[\s\S]{0,45}?\$\s*([\d,]+(?:\.\d{1,2})?)/i);
+    if(paidMatch) out.payout=cleanMoney(paidMatch[1]);
+
+    const allMoney=[...text.matchAll(/\$\s*([\d,]+(?:\.\d{1,2})?)/g)]
+      .map(m=>cleanMoney(m[1])).filter(v=>v!=null && v>0);
+
+    // Common settled-ticket layout: Wager / Paid labels with two dollar amounts.
+    if(out.stake==null && /\bwager\b/i.test(text) && allMoney.length){
+      if(/\bpaid\b|\bpayout\b/i.test(text) && allMoney.length>=2){
+        out.stake=Math.min(...allMoney);
+      }else{
+        out.stake=allMoney[0];
+      }
+    }
+    if(out.payout==null && /\bpaid\b|\bpayout\b/i.test(text) && allMoney.length>=2){
+      out.payout=Math.max(...allMoney);
+    }
+    if(out.stake!=null) out.found.push("stake");
+
+    // Date / time if visible
     let dm=text.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
     if(dm) out.date=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;
     if(!out.date){
@@ -1633,7 +1786,9 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
       if(dm){
         const a=Number(dm[1]),b=Number(dm[2]);
         const month=a<=12?a:b, day=a<=12?b:a;
-        out.date=`${dm[3]}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        if(month>=1&&month<=12&&day>=1&&day<=31){
+          out.date=`${dm[3]}-${String(month).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+        }
       }
     }
     const tm=text.match(/\b([01]?\d|2[0-3]):([0-5]\d)\s*(AM|PM)?\b/i);
@@ -1643,64 +1798,107 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
       out.time=`${String(h).padStart(2,"0")}:${tm[2]}`;
     }
 
-    // Event: best line containing vs/@/at.
-    const eventCandidates=lines
-      .map(line=>({line,score:lineScoreEvent(line)}))
-      .filter(x=>x.score>=4)
-      .sort((a,b)=>b.score-a.score);
-    if(eventCandidates.length){
-      out.event=eventCandidates[0].line
-        .replace(/\b(NBA|NFL|MLB|NHL|NCAAB|UFC)\b/ig,"").replace(/\s{2,}/g," ").trim();
+    // Event(s): ONLY real matchup-looking lines. Never IDs, Share, etc.
+    const eventLines=uniq(lines.filter(looksLikeEvent));
+    if(eventLines.length){
+      // For parlays, concatenate all visible matchups so all teams are preserved.
+      out.event=eventLines.join(" • ");
       out.found.push("evento");
     }
 
-    // Pick: lines with common market terms, team + handicap, total or moneyline.
-    const pickRegex=/\b(moneyline|money line|ml\b|spread|handicap|total|over|under|o\/u|to win|1st half|first half|team total|player prop|points|rebounds|assists|touchdowns|goals|sets)\b/i;
-    let pickLine=lines.find(l=>pickRegex.test(l) && !/potential|payout|total return|total wager/i.test(l));
-    if(!pickLine){
-      pickLine=lines.find(l=>/[A-Za-z]{3,}.*(?:[+-]\d+(?:\.\d+)?|over\s+\d|under\s+\d)/i.test(l) && !/\$/.test(l));
-    }
-    if(pickLine){
-      out.pick=pickLine.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim();
-      out.found.push("selección");
-    }
+    // Selections / legs
+    const selectionLines=uniq(lines.filter(looksLikeSelection));
 
-    // Fallback event from two adjacent team-like lines.
-    if(!out.event){
-      const banned=/wager|stake|odds|payout|to win|potential|receipt|sportsbook|bet slip|parlay|straight|balance|cash out/i;
-      const teamLines=lines.filter(l=>l.length>=4&&l.length<=70&&/[A-Za-z]{3}/.test(l)&&!banned.test(l)&&!/\$/.test(l)&&!/^[+-]?\d+$/.test(l));
-      if(teamLines.length>=2){
-        out.event=teamLines.slice(0,2).join(" vs ");
+    // Hard Rock-style compact line: "Over 3.5, Over 6.5"
+    const compactSelections=[];
+    lines.forEach(line=>{
+      if(/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(line)){
+        line.split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>compactSelections.push(x));
       }
+    });
+
+    const selections=uniq([...compactSelections,...selectionLines])
+      .filter(x=>!looksLikeEvent(x))
+      .filter(x=>!/\b\d+\s*[- ]?\s*bet\s+parlay\b/i.test(x));
+
+    if(selections.length){
+      out.pick=selections.join(" + ");
+      out.found.push("selección");
+    }else if(out.betType){
+      out.pick=out.betType;
     }
 
-    // If pick still missing, choose a useful nearby non-event line.
-    if(!out.pick){
-      const candidate=lines.find(l=>
-        l!==out.event && l.length>=3 && l.length<=80 &&
-        /[A-Za-z]/.test(l) && !/wager|stake|payout|to win|receipt|balance|sportsbook/i.test(l) &&
-        !SCAN_BOOKS.some(([,re])=>re.test(l))
-      );
-      if(candidate) out.pick=candidate;
+    // For parlays, if matchup rows are not visible, never fabricate teams.
+    if(out.betType && !out.event){
+      out.missingTeams=true;
     }
 
-    out.confidence=Math.min(100,Math.round(out.found.length/6*100));
+    out.confidence=Math.min(100,Math.round(out.found.length/7*100));
     return out;
   }
 
   function applyScannedTicket(data){
+    // Never leave the default NBA when OCR did not actually detect a sport.
     if(data.sport){
       const option=[...$("fSport").options].find(o=>o.value.toLowerCase()===data.sport.toLowerCase());
-      if(option) $("fSport").value=option.value;
+      $("fSport").value=option ? option.value : "Otro";
+    }else{
+      $("fSport").value="Otro";
     }
-    if(data.book) $("fBook").value=data.book;
-    if(data.event) $("fEvent").value=data.event;
-    if(data.pick) $("fPick").value=data.pick;
+
+    $("fBook").value=data.book || "";
+    $("fEvent").value=data.event || "";
+
+    if(data.pick){
+      $("fPick").value=data.betType && !data.pick.toLowerCase().includes("parlay")
+        ? `${data.betType}: ${data.pick}`
+        : data.pick;
+    }else{
+      $("fPick").value=data.betType || "";
+    }
+
     if(data.odds!=null) $("fOdds").value=data.odds;
     if(data.stake!=null && data.stake>0) $("fStake").value=data.stake.toFixed(2);
     if(data.date) $("fDate").value=data.date;
     if(data.time) $("fTime").value=data.time;
+
+    // Keep existing notes, but preserve useful settled-ticket metadata.
+    if(data.payout!=null || data.settledResult){
+      const bits=[];
+      if(data.payout!=null) bits.push(`Payout leído: ${money(data.payout)}`);
+      if(data.settledResult==="win") bits.push("Ticket detectado como pagado/ganador");
+      else if(data.settledResult==="loss") bits.push("Ticket detectado como perdido");
+      else if(data.settledResult==="push") bits.push("Ticket detectado como push/void");
+      if(bits.length) $("fNotes").value=bits.join(" · ");
+    }
+
     updateCalc();
+  }
+
+  function renderScanDetected(data){
+    const detected=$("scanDetected");
+    const chips=[];
+    const push=(label,value)=>{
+      if(value===null||value===undefined||value==="") return;
+      chips.push(`<div class="scan-chip">${label}<strong>${esc(value)}</strong></div>`);
+    };
+    push("Sportsbook",data.book);
+    push("Tipo",data.betType);
+    push("Cuota",data.odds!=null ? (data.odds>0?"+":"")+data.odds : null);
+    push("Stake",data.stake!=null ? money(data.stake) : null);
+    push("Payout",data.payout!=null ? money(data.payout) : null);
+    push("Resultado leído",data.settledResult==="win"?"WIN / Pagado":data.settledResult==="loss"?"LOST":data.settledResult==="push"?"PUSH":null);
+    detected.innerHTML=chips.join("");
+    detected.classList.toggle("show",chips.length>0);
+  }
+
+  async function runOCR(source,logger){
+    const res=await Tesseract.recognize(source,"eng",{
+      logger,
+      tessedit_pageseg_mode:"6",
+      preserve_interword_spaces:"1"
+    });
+    return res?.data || {text:"",confidence:0};
   }
 
   async function scanTicketFile(file){
@@ -1708,69 +1906,99 @@ html[data-theme="dark"] .scan-raw{background:#0b0e11;border-color:rgba(255,255,2
       toast("Selecciona una imagen del ticket");
       return;
     }
+
     const preview=$("ticketPreview"), img=$("ticketPreviewImg"), title=$("scanStatusTitle"),
-          status=$("scanStatusText"), bar=$("scanProgressBar"), result=$("scanResult"), raw=$("scanRawText");
+          status=$("scanStatusText"), bar=$("scanProgressBar"), result=$("scanResult"),
+          raw=$("scanRawText"), guide=$("scanGuidance");
 
     preview.classList.add("show");
     result.classList.remove("show","warn");
+    guide.classList.remove("show");
+    $("scanDetected").classList.remove("show");
     raw.classList.remove("show");
     bar.style.width="3%";
     title.textContent="Preparando imagen…";
-    status.textContent="La lectura se realiza en tu navegador.";
+    status.textContent="Mejorando contraste para leer el ticket.";
 
     const objectUrl=URL.createObjectURL(file);
     img.src=objectUrl;
 
     try{
-      if(typeof Tesseract==="undefined"){
-        throw new Error("OCR_NO_CARGADO");
-      }
-      const {data}=await Tesseract.recognize(file,"eng",{
-        logger:m=>{
-          if(m.status==="recognizing text"){
-            const progress=Math.max(5,Math.round((m.progress||0)*100));
-            bar.style.width=progress+"%";
-            title.textContent="Leyendo ticket…";
-            status.textContent=`Analizando texto ${progress}%`;
-          }else if(m.status){
-            title.textContent="Analizando ticket…";
-            status.textContent=m.status;
-          }
+      if(typeof Tesseract==="undefined") throw new Error("OCR_NO_CARGADO");
+
+      const processed=await preprocessTicketImage(file);
+
+      let lastPct=0;
+      const ocr=await runOCR(processed,m=>{
+        if(m.status==="recognizing text"){
+          const progress=Math.max(5,Math.round((m.progress||0)*100));
+          lastPct=progress;
+          bar.style.width=progress+"%";
+          title.textContent="Leyendo ticket…";
+          status.textContent=`Reconociendo datos ${progress}%`;
+        }else if(m.status){
+          title.textContent="Analizando ticket…";
+          status.textContent=m.status;
         }
       });
 
-      const text=normalizeOCR(data?.text||"");
+      let text=normalizeOCR(ocr.text||"");
+
+      // If high-contrast OCR is unusually sparse, retry the original image.
+      if(text.length<35){
+        status.textContent="Haciendo una segunda lectura…";
+        const rawOCR=await runOCR(file,m=>{
+          if(m.status==="recognizing text"){
+            const p=Math.round((m.progress||0)*100);
+            bar.style.width=Math.max(lastPct,p)+"%";
+          }
+        });
+        const rawText=normalizeOCR(rawOCR.text||"");
+        if(rawText.length>text.length) text=rawText;
+      }
+
       if(!text || text.length<4) throw new Error("NO_TEXT");
 
       const parsed=parseTicketText(text);
+      lastScanMeta=parsed;
       applyScannedTicket(parsed);
+      renderScanDetected(parsed);
 
       bar.style.width="100%";
       title.textContent="Ticket analizado";
-      const labels=[];
-      if(parsed.book) labels.push(parsed.book);
-      if(parsed.sport) labels.push(parsed.sport);
-      if(parsed.odds!=null) labels.push((parsed.odds>0?"+":"")+parsed.odds);
-      if(parsed.stake!=null) labels.push(money(parsed.stake));
 
-      const enough=!!(parsed.event && parsed.pick && parsed.odds!=null && parsed.stake!=null);
+      const essential=[parsed.book,parsed.odds!=null,parsed.stake!=null,parsed.event,parsed.pick];
+      const essentialCount=essential.filter(Boolean).length;
+      const enough=essentialCount>=4 && !!parsed.pick;
+
       result.classList.add("show");
       result.classList.toggle("warn",!enough);
-      result.textContent=enough
-        ? `✓ Datos detectados${labels.length ? ": "+labels.join(" · ") : ""}. Revisa los campos y guarda la apuesta.`
-        : `Lectura parcial${labels.length ? ": "+labels.join(" · ") : ""}. Revisa y completa manualmente los campos que falten.`;
+
+      if(enough){
+        result.textContent="Datos detectados. Revisa los campos antes de guardar la apuesta.";
+      }else{
+        result.textContent="Lectura parcial. Completé únicamente los datos que aparecen con suficiente claridad.";
+      }
+
+      if(parsed.missingTeams){
+        guide.classList.add("show");
+        guide.textContent=`Parlay${parsed.legs ? " de "+parsed.legs+" selecciones" : ""} detectado, pero los equipos/partidos no aparecen en esta captura. Expande las selecciones del ticket y toma una captura donde se vean todos los matchups para rellenar el campo Evento automáticamente.`;
+      }else if(!parsed.book){
+        guide.classList.add("show");
+        guide.textContent="No pude confirmar la casa de apuestas por el texto de la imagen. Puedes escribirla manualmente o usar una captura donde se vea claramente el logo/nombre.";
+      }
 
       raw.textContent="Texto leído del ticket:\n\n"+text;
       raw.classList.add("show");
-      status.textContent=`OCR completado · ${Math.round(data?.confidence||0)}% de confianza de lectura`;
-      toast(enough ? "Ticket rellenado automáticamente" : "Ticket leído: revisa los campos");
+      status.textContent=`OCR completado · ${Math.round(ocr.confidence||0)}% de confianza de lectura`;
+      toast(enough ? "Ticket rellenado automáticamente" : "Ticket leído: revisa lo pendiente");
     }catch(err){
       console.error("Ticket scanner:",err);
       bar.style.width="0%";
       title.textContent="No pude leer este ticket";
       status.textContent=err?.message==="OCR_NO_CARGADO"
         ? "No se pudo cargar el motor OCR. Comprueba tu conexión a internet e inténtalo otra vez."
-        : "Prueba con una captura más nítida, sin recortes y con el texto completo.";
+        : "Prueba con una captura más nítida y asegúrate de que se vean las selecciones completas.";
       result.classList.add("show","warn");
       result.textContent="Puedes continuar rellenando la apuesta manualmente.";
       toast("No se pudo leer el ticket");
