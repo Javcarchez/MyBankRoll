@@ -868,6 +868,233 @@ html[data-theme="dark"] .scan-guidance{
 }
 html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,255,.08)}
 
+
+/* ===== Card actions + single date cleanup ===== */
+.bet-actions{grid-template-columns:repeat(4,1fr)}
+.settled .bet-actions{grid-template-columns:1fr 1fr}
+.bet-footer{min-height:26px}
+.bet-footer .settled-date{margin-left:auto}
+
+/* PUSH is no longer offered as a card action. Legacy PUSH records remain readable. */
+
+
+
+/* ===== Settled ticket cards — deep reference colors ===== */
+.bet-card[data-status="win"],
+.bet-card[data-status="loss"],
+.bet-card.status-win,
+.bet-card.status-loss{
+  overflow:hidden;
+  isolation:isolate;
+}
+
+/* Repeated diagonal BANKROLL watermark */
+.bet-card[data-status="win"]::before,
+.bet-card[data-status="loss"]::before,
+.bet-card.status-win::before,
+.bet-card.status-loss::before{
+  content:"BANKROLL  BANKROLL  BANKROLL\A BANKROLL  BANKROLL  BANKROLL\A BANKROLL  BANKROLL  BANKROLL";
+  white-space:pre;
+  position:absolute;
+  z-index:0;
+  inset:-28% -16% auto auto;
+  width:85%;
+  height:165%;
+  transform:rotate(-10deg);
+  transform-origin:center;
+  pointer-events:none;
+  user-select:none;
+  font-size:34px;
+  line-height:1.35;
+  font-weight:950;
+  letter-spacing:-1px;
+  text-align:center;
+  opacity:.075;
+}
+
+.bet-card[data-status="win"]::before,
+.bet-card.status-win::before{color:#24d768}
+
+.bet-card[data-status="loss"]::before,
+.bet-card.status-loss::before{color:#ff4b45}
+
+.bet-card[data-status="win"] > *,
+.bet-card[data-status="loss"] > *,
+.bet-card.status-win > *,
+.bet-card.status-loss > *{
+  position:relative;
+  z-index:1;
+}
+
+/* WIN — deep bankroll green */
+.bet-card[data-status="win"],
+.bet-card.status-win{
+  border:1px solid rgba(33,222,102,.72) !important;
+  border-left:5px solid #23dc68 !important;
+  background:
+    radial-gradient(circle at 92% 0%,rgba(47,220,100,.32),transparent 35%),
+    linear-gradient(115deg,#03190e 0%,#052c17 34%,#004e22 70%,#0b7a35 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    inset 0 0 34px rgba(35,220,104,.08),
+    0 10px 28px rgba(0,96,40,.16) !important;
+}
+
+/* LOST — deep bankroll red */
+.bet-card[data-status="loss"],
+.bet-card.status-loss{
+  border:1px solid rgba(255,66,60,.72) !important;
+  border-left:5px solid #ff3935 !important;
+  background:
+    radial-gradient(circle at 92% 0%,rgba(255,70,62,.30),transparent 36%),
+    linear-gradient(115deg,#260705 0%,#48100c 36%,#701714 72%,#9d2520 100%) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.08),
+    inset 0 0 34px rgba(255,60,55,.06),
+    0 10px 28px rgba(130,20,16,.14) !important;
+}
+
+/* White typography over settled colored cards */
+.bet-card[data-status="win"] .bet-title,
+.bet-card[data-status="loss"] .bet-title,
+.bet-card.status-win .bet-title,
+.bet-card.status-loss .bet-title{
+  color:#fff !important;
+}
+
+.bet-card[data-status="win"] .bet-pick,
+.bet-card[data-status="loss"] .bet-pick,
+.bet-card[data-status="win"] .settled-date,
+.bet-card[data-status="loss"] .settled-date,
+.bet-card.status-win .bet-pick,
+.bet-card.status-loss .bet-pick,
+.bet-card.status-win .settled-date,
+.bet-card.status-loss .settled-date{
+  color:rgba(255,255,255,.74) !important;
+}
+
+.bet-card[data-status="win"] .bet-sport,
+.bet-card.status-win .bet-sport{
+  color:#8ff5af !important;
+}
+
+.bet-card[data-status="loss"] .bet-sport,
+.bet-card.status-loss .bet-sport{
+  color:#ffaaa6 !important;
+}
+
+/* Internal glass containers */
+.bet-card[data-status="win"] .num,
+.bet-card[data-status="loss"] .num,
+.bet-card.status-win .num,
+.bet-card.status-loss .num,
+.bet-card[data-status="win"] .icon-btn,
+.bet-card[data-status="loss"] .icon-btn,
+.bet-card.status-win .icon-btn,
+.bet-card.status-loss .icon-btn{
+  background:
+    linear-gradient(145deg,rgba(255,255,255,.095),rgba(255,255,255,.035)) !important;
+  border:1px solid rgba(255,255,255,.18) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.10),
+    0 6px 18px rgba(0,0,0,.10) !important;
+  backdrop-filter:blur(18px) saturate(145%);
+  -webkit-backdrop-filter:blur(18px) saturate(145%);
+}
+
+.bet-card[data-status="win"] .num span,
+.bet-card[data-status="loss"] .num span,
+.bet-card.status-win .num span,
+.bet-card.status-loss .num span{
+  color:rgba(255,255,255,.72) !important;
+}
+
+.bet-card[data-status="win"] .num strong,
+.bet-card[data-status="loss"] .num strong,
+.bet-card.status-win .num strong,
+.bet-card.status-loss .num strong{
+  color:#fff;
+}
+
+/* Preserve positive/negative result emphasis */
+.bet-card[data-status="win"] .num strong.green,
+.bet-card.status-win .num strong.green{
+  color:#79ef52 !important;
+}
+
+.bet-card[data-status="loss"] .num strong.red,
+.bet-card.status-loss .num strong.red{
+  color:#ff4c46 !important;
+}
+
+/* Odds pill stays bright like the reference */
+.bet-card[data-status="win"] .odds,
+.bet-card.status-win .odds{
+  color:#0b6f32 !important;
+  background:rgba(245,255,247,.92) !important;
+  border:1px solid rgba(255,255,255,.72) !important;
+  box-shadow:0 7px 18px rgba(0,0,0,.12) !important;
+}
+
+.bet-card[data-status="loss"] .odds,
+.bet-card.status-loss .odds{
+  color:#951f1a !important;
+  background:rgba(255,245,244,.92) !important;
+  border:1px solid rgba(255,255,255,.70) !important;
+  box-shadow:0 7px 18px rgba(0,0,0,.12) !important;
+}
+
+/* Bottom status badge */
+.bet-card[data-status="win"] .status.win,
+.bet-card.status-win .status.win{
+  color:#7df49d !important;
+  background:rgba(25,190,79,.18) !important;
+  border:1px solid rgba(82,240,130,.16);
+}
+
+.bet-card[data-status="loss"] .status.loss,
+.bet-card.status-loss .status.loss{
+  color:#ff6f69 !important;
+  background:rgba(207,35,30,.20) !important;
+  border:1px solid rgba(255,91,85,.13);
+}
+
+/* Reopen / Delete remain easy to identify */
+.bet-card[data-status="win"] .delete-btn,
+.bet-card[data-status="loss"] .delete-btn,
+.bet-card.status-win .delete-btn,
+.bet-card.status-loss .delete-btn{
+  color:#ff5550 !important;
+}
+
+.bet-card[data-status="win"] [data-action="reopen"],
+.bet-card[data-status="loss"] [data-action="reopen"],
+.bet-card.status-win [data-action="reopen"],
+.bet-card.status-loss [data-action="reopen"]{
+  color:#4fa3ff !important;
+}
+
+/* Pending stays exactly neutral */
+.bet-card[data-status="pending"],
+.bet-card.status-pending{
+  border-left-color:transparent !important;
+}
+
+/* Dark mode: keep same result colors instead of replacing them */
+html[data-theme="dark"] .bet-card[data-status="win"],
+html[data-theme="dark"] .bet-card.status-win{
+  background:
+    radial-gradient(circle at 92% 0%,rgba(47,220,100,.28),transparent 35%),
+    linear-gradient(115deg,#02140b 0%,#052818 34%,#00431f 70%,#08672f 100%) !important;
+}
+
+html[data-theme="dark"] .bet-card[data-status="loss"],
+html[data-theme="dark"] .bet-card.status-loss{
+  background:
+    radial-gradient(circle at 92% 0%,rgba(255,70,62,.26),transparent 36%),
+    linear-gradient(115deg,#220604 0%,#400d0a 36%,#62130f 72%,#84201c 100%) !important;
+}
+
 </style>
 </head>
 <body>
@@ -1187,6 +1414,26 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
     return new Intl.DateTimeFormat("es-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}).format(d);
   }
 
+  function formatBetDate(dateValue, timeValue){
+    if(!dateValue) return "";
+    const safeTime = timeValue || "12:00";
+    const d = new Date(`${dateValue}T${safeTime}:00`);
+    if(Number.isNaN(d.getTime())) return [dateValue,timeValue].filter(Boolean).join(" · ");
+    return new Intl.DateTimeFormat("es-US",{
+      month:"short",
+      day:"numeric",
+      hour: timeValue ? "numeric" : undefined,
+      minute: timeValue ? "2-digit" : undefined
+    }).format(d);
+  }
+
+  function cardFooterDate(b){
+    // Closed bets show when the result was registered.
+    // Pending bets show their entered bet date/time.
+    if(b.status !== "pending" && b.settledAt) return formatSettledDate(b.settledAt);
+    return formatBetDate(b.date,b.time);
+  }
+
   function americanProfit(stake, odds){
     stake = Number(stake) || 0;
     odds = Number(odds) || 0;
@@ -1273,13 +1520,12 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
     const result = betDelta(b);
     const statusLabel = {pending:"PENDIENTE",win:"WIN",loss:"LOST",push:"PUSH"}[b.status] || "PENDIENTE";
     return `
-      <article class="bet-card glass ${b.status !== "pending" ? "settled" : ""}" data-id="${b.id}">
+      <article class="bet-card glass ${b.status !== "pending" ? "settled" : ""} status-${b.status}" data-id="${b.id}" data-status="${b.status}">
         <div class="bet-top">
           <div>
             <div class="bet-sport">${esc(b.sport)} · ${esc(b.book || "Sportsbook")}</div>
             <div class="bet-title">${esc(b.event)}</div>
             <div class="bet-pick">${esc(b.pick)}</div>
-            <div class="bet-date">${esc(b.date || "Sin fecha")}${b.time ? " · " + esc(b.time) : ""}</div>
           </div>
           <div class="odds">${Number(b.odds) > 0 ? "+" : ""}${b.odds}</div>
         </div>
@@ -1298,7 +1544,6 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
         <div class="bet-actions">
           <button class="result-btn win-btn" data-action="win">WIN</button>
           <button class="result-btn loss-btn" data-action="loss">LOST</button>
-          <button class="result-btn push-btn" data-action="push">PUSH</button>
           <button class="icon-btn" data-action="edit">Editar</button>
           <button class="icon-btn delete-btn" data-action="delete">Borrar</button>
           ${b.status !== "pending" ? `<button class="icon-btn" data-action="reopen">Reabrir</button>` : ""}
@@ -1306,7 +1551,7 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
 
         <div class="bet-footer">
           <div class="status ${b.status}">${statusLabel}</div>
-          ${b.status !== "pending" && b.settledAt ? `<div class="settled-date">${formatSettledDate(b.settledAt)}</div>` : ""}
+          ${cardFooterDate(b) ? `<div class="settled-date">${cardFooterDate(b)}</div>` : ""}
         </div>
       </article>
     `;
@@ -2120,21 +2365,22 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
   });
 
   document.addEventListener("click", e => {
-    const action = e.target.dataset.action;
-    const card = e.target.closest(".bet-card");
+    const actionButton = e.target.closest("[data-action]");
+    const action = actionButton?.dataset.action;
+    const card = actionButton?.closest(".bet-card");
 
     if(!card || !action) return;
 
     const b = state.bets.find(x => x.id === card.dataset.id);
     if(!b) return;
 
-    if(["win","loss","push"].includes(action)){
+    if(["win","loss"].includes(action)){
       if(b.status !== "pending") return;
       b.status = action;
       b.settledAt = new Date().toISOString();
       save();
       render();
-      toast(action === "win" ? "WIN registrado" : action === "loss" ? "LOST registrado" : "PUSH registrado");
+      toast(action === "win" ? "WIN registrado" : "LOST registrado");
       return;
     }
 
@@ -2158,6 +2404,10 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
     }
 
     if(action === "reopen"){
+      if(b.status === "pending"){
+        toast("La apuesta ya está pendiente");
+        return;
+      }
       if(confirm("¿Reabrir esta apuesta? El resultado dejará de afectar el bankroll.")){
         b.status = "pending";
         b.settledAt = null;
@@ -2165,6 +2415,7 @@ html[data-theme="dark"] .scan-chip{background:#0b0e11;border-color:rgba(255,255,
         render();
         toast("Apuesta reabierta");
       }
+      return;
     }
   });
 
