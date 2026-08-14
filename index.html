@@ -596,6 +596,95 @@ body{background:#f4f5f7}
 .calc-box{background:linear-gradient(145deg,rgba(218,250,233,.92),rgba(238,255,246,.78));border:1px solid rgba(19,173,90,.16);box-shadow:inset 0 1px 0 rgba(255,255,255,.9),0 8px 22px rgba(19,173,90,.06)}
 @media(max-width:420px){.health-grid{gap:6px}.health-item{padding:9px 7px;min-height:82px}.health-item span{font-size:7px}.health-item strong{font-size:12px}.health-item small{font-size:7px}.settled-date{font-size:7px}}
 
+
+/* ===== Modo claro / oscuro ===== */
+.theme-setting{align-items:center}
+.theme-toggle{
+  width:64px;height:36px;padding:3px;border:1px solid var(--line-strong);
+  border-radius:999px;background:#eef1f4;position:relative;cursor:pointer;
+  box-shadow:inset 0 1px 3px rgba(0,0,0,.08);transition:.25s ease;
+}
+.theme-toggle .theme-knob{
+  width:28px;height:28px;border-radius:50%;background:#fff;display:grid;place-items:center;
+  position:absolute;left:3px;top:3px;box-shadow:0 3px 10px rgba(0,0,0,.18);
+  transition:transform .25s ease,background .25s ease;color:#111318;font-size:14px;
+}
+.theme-toggle .moon{display:none}
+.theme-toggle .sun{display:block}
+
+html[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#080a0c;--card:rgba(17,20,23,.86);--card-strong:rgba(22,25,29,.96);
+  --text:#f5f7f8;--muted:#8f969f;--line:rgba(255,255,255,.075);
+  --line-strong:rgba(255,255,255,.13);--green:#35e37d;--green-soft:rgba(53,227,125,.12);
+  --red:#ff6666;--red-soft:rgba(255,102,102,.11);--amber:#e7b64d;
+  --amber-soft:rgba(231,182,77,.11);--surface:#101316;--soft:#0c0f12;
+  --ink:#f5f7f8;--shadow:0 18px 54px rgba(0,0,0,.32);
+  --shadow-soft:0 8px 24px rgba(0,0,0,.24);
+}
+html[data-theme="dark"] body{
+  background:#000;
+}
+html[data-theme="dark"] .glass{
+  background:linear-gradient(145deg,rgba(21,24,28,.94),rgba(12,15,18,.88));
+  border-color:rgba(255,255,255,.075);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.055),0 10px 34px rgba(0,0,0,.25);
+}
+html[data-theme="dark"] .topbar{background:rgba(7,9,11,.88)}
+html[data-theme="dark"] .hero{background:#101316}
+html[data-theme="dark"] .hero:after{
+  background:radial-gradient(circle,rgba(53,227,125,.08) 0,rgba(53,227,125,.025) 42%,transparent 70%)
+}
+html[data-theme="dark"] .hero-mini,
+html[data-theme="dark"] .health-item,
+html[data-theme="dark"] .bet-item,
+html[data-theme="dark"] .bet-card,
+html[data-theme="dark"] .num{
+  background:#0c0f12;border-color:rgba(255,255,255,.07)
+}
+html[data-theme="dark"] .nav{
+  background:rgba(12,15,18,.9);border-color:rgba(255,255,255,.075)
+}
+html[data-theme="dark"] .nav button,
+html[data-theme="dark"] .filter-btn,
+html[data-theme="dark"] .secondary,
+html[data-theme="dark"] .cancel-btn,
+html[data-theme="dark"] .result-btn,
+html[data-theme="dark"] .icon-btn,
+html[data-theme="dark"] .close-btn,
+html[data-theme="dark"] .odds{
+  background:rgba(255,255,255,.055);border-color:rgba(255,255,255,.08);color:var(--text)
+}
+html[data-theme="dark"] .nav button.active,
+html[data-theme="dark"] .filter-btn.active,
+html[data-theme="dark"] .range-btn.active,
+html[data-theme="dark"] .add-btn,
+html[data-theme="dark"] .save-btn{background:#f4f6f7!important;color:#080a0c!important}
+html[data-theme="dark"] .range-btn{background:#0c0f12;color:#8f969f}
+html[data-theme="dark"] .field input,
+html[data-theme="dark"] .field select,
+html[data-theme="dark"] .field textarea,
+html[data-theme="dark"] .setting input{
+  background:#0b0e11;border-color:rgba(255,255,255,.11);color:#f5f7f8
+}
+html[data-theme="dark"] input::placeholder,
+html[data-theme="dark"] textarea::placeholder{color:#666e78}
+html[data-theme="dark"] .calc-box{
+  background:linear-gradient(145deg,rgba(35,108,68,.24),rgba(21,57,39,.18));
+  border-color:rgba(53,227,125,.18);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 8px 22px rgba(0,0,0,.16)
+}
+html[data-theme="dark"] .status.pending{background:#171b20;color:#a2a9b2}
+html[data-theme="dark"] .metric-track{background:#20252a}
+html[data-theme="dark"] .modal{background:rgba(0,0,0,.56)}
+html[data-theme="dark"] .theme-toggle{background:#24292f;border-color:rgba(255,255,255,.12)}
+html[data-theme="dark"] .theme-toggle .theme-knob{transform:translateX(28px);background:#11151a;color:#fff}
+html[data-theme="dark"] .theme-toggle .sun{display:none}
+html[data-theme="dark"] .theme-toggle .moon{display:block}
+html[data-theme="dark"] .chart-labels,
+html[data-theme="dark"] .bet-pick,
+html[data-theme="dark"] .settled-date{color:#8f969f}
+
 </style>
 </head>
 <body>
@@ -726,6 +815,16 @@ body{background:#f4f5f7}
     <section class="page" id="page-settings">
       <section class="section glass">
         <div class="section-head"><h2>Configuración</h2><span>Guardado local en este dispositivo</span></div>
+
+        <div class="setting theme-setting">
+          <div>
+            <strong>Apariencia</strong>
+            <small>Cambia entre modo claro y oscuro.</small>
+          </div>
+          <button class="theme-toggle" id="themeToggle" type="button" aria-label="Cambiar modo" aria-pressed="false">
+            <span class="theme-knob"><span class="sun">☀︎</span><span class="moon">☾</span></span>
+          </button>
+        </div>
         <div class="setting">
           <div><strong>Bankroll inicial</strong><small>Base para medir crecimiento y profit.</small></div>
           <input id="initialBankrollInput" type="number" min="0" step="0.01">
@@ -1451,6 +1550,37 @@ body{background:#f4f5f7}
   chartCanvas.addEventListener("pointerup", e => { if(e.pointerType !== "mouse") { setTimeout(()=>{chartHoverIndex=null;renderChart();},900); } });
 
   window.addEventListener("resize", renderChart);
+
+
+  /* ===== Tema claro / oscuro ===== */
+  const THEME_KEY = "bankroll-theme";
+
+  function applyTheme(theme){
+    const next = theme === "dark" ? "dark" : "light";
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem(THEME_KEY,next);
+
+    const toggle = document.getElementById("themeToggle");
+    if(toggle){
+      toggle.setAttribute("aria-pressed", String(next === "dark"));
+      toggle.title = next === "dark" ? "Cambiar a modo claro" : "Cambiar a modo oscuro";
+    }
+
+    const metaTheme = document.querySelector('meta[name="theme-color"]');
+    if(metaTheme) metaTheme.setAttribute("content", next === "dark" ? "#080a0c" : "#f4f5f7");
+
+    requestAnimationFrame(() => {
+      if(typeof renderChart === "function") renderChart();
+    });
+  }
+
+  const savedTheme = localStorage.getItem(THEME_KEY);
+  const initialTheme = savedTheme || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  applyTheme(initialTheme);
+
+  document.getElementById("themeToggle")?.addEventListener("click", () => {
+    applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+  });
 
   render();
 })();
