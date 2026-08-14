@@ -576,6 +576,12 @@ body{background:#f4f5f7}
 @media(max-width:899px){.app{padding:14px 12px 105px}.topbar{padding-top:max(8px,env(safe-area-inset-top))}.brand small{font-size:7px}.add-btn{font-size:8px;padding:10px 12px}.hero{padding:17px 14px 14px;border-radius:21px}.balance{font-size:38px}.chart-wrap{height:220px}.hero-grid{grid-template-columns:repeat(3,1fr)}.hero-mini{padding:10px}.hero-mini strong{font-size:13px}.nav{top:max(64px,env(safe-area-inset-top));overflow:auto}.kpis,.pro-grid{grid-template-columns:1fr 1fr}.analytics-grid{grid-template-columns:1fr}.health-grid{grid-template-columns:1fr 1fr}.section{padding:14px}.metric-row{grid-template-columns:64px 1fr auto}}
 @media(max-width:420px){.balance{font-size:34px}.hero-grid{grid-template-columns:1fr 1fr}.hero-grid .hero-mini:last-child{grid-column:1/-1}.chart-wrap{height:200px}}
 .health-item small{display:block;margin-top:5px;font-size:8px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== Robinhood-style interactive chart upgrade ===== */
+.bet-date{font-size:8px;color:#9aa0a8;margin-top:5px;font-weight:700}
+.chart-wrap{cursor:crosshair;touch-action:none;user-select:none;-webkit-user-select:none}
+#bankrollChart{touch-action:none}
+
 </style>
 </head>
 <body>
@@ -928,6 +934,7 @@ body{background:#f4f5f7}
             <div class="bet-sport">${esc(b.sport)} · ${esc(b.book || "Sportsbook")}</div>
             <div class="bet-title">${esc(b.event)}</div>
             <div class="bet-pick">${esc(b.pick)}${b.market ? " · " + esc(b.market) : ""}</div>
+            <div class="bet-date">${esc(b.date || "Sin fecha")}${b.time ? " · " + esc(b.time) : ""}</div>
           </div>
           <div class="odds">${Number(b.odds) > 0 ? "+" : ""}${b.odds}</div>
         </div>
@@ -1092,108 +1099,94 @@ body{background:#f4f5f7}
     return d;
   }
 
+  let chartHitPoints = [];
+  let chartHoverIndex = null;
+  let chartMeta = null;
+
   function renderChart(){
     const canvas = $("bankrollChart");
     const rect = canvas.getBoundingClientRect();
     const dpr = window.devicePixelRatio || 1;
-
     canvas.width = Math.max(1, Math.round(rect.width * dpr));
     canvas.height = Math.max(1, Math.round(rect.height * dpr));
-
     const ctx = canvas.getContext("2d");
     ctx.setTransform(dpr,0,0,dpr,0,0);
 
     const settled = [...state.bets]
       .filter(b => ["win","loss","push"].includes(b.status))
       .sort((a,b) => (a.settledAt || a.createdAt || "").localeCompare(b.settledAt || b.createdAt || ""));
-
     const rangeStart = getRangeStart();
-    const relevant = rangeStart
-      ? settled.filter(b => new Date(b.settledAt || b.createdAt || 0) >= rangeStart)
-      : settled;
-
+    const relevant = rangeStart ? settled.filter(b => new Date(b.settledAt || b.createdAt || 0) >= rangeStart) : settled;
     let runningBefore = state.initialBankroll;
-    if(rangeStart){
-      settled
-        .filter(b => new Date(b.settledAt || b.createdAt || 0) < rangeStart)
-        .forEach(b => runningBefore += betDelta(b));
-    }
+    if(rangeStart) settled.filter(b => new Date(b.settledAt || b.createdAt || 0) < rangeStart).forEach(b => runningBefore += betDelta(b));
 
-    const values = [runningBefore];
-    let cur = runningBefore;
-    relevant.forEach(b => {
-      cur += betDelta(b);
-      values.push(cur);
-    });
+    const values=[runningBefore], labels=[rangeStart ? rangeStart.toISOString() : "Inicio"];
+    let cur=runningBefore;
+    relevant.forEach(b=>{ cur+=betDelta(b); values.push(cur); labels.push(b.settledAt || b.createdAt || b.date || ""); });
+    if(values.length===1){ values.push(values[0]); labels.push(labels[0]); }
 
-    if(values.length === 1) values.push(values[0]);
-
-    const W = rect.width;
-    const H = rect.height;
-    const pad = 12;
-
-    let min = Math.min(...values);
-    let max = Math.max(...values);
-
-    if(max === min){
-      max += 1;
-      min -= 1;
-    }
-
-    const extra = Math.max((max-min)*0.12,1);
-    max += extra;
-    min -= extra;
-
-    const points = values.map((v,i) => {
-      const x = pad + i * ((W - pad*2) / (values.length-1));
-      const y = pad + ((max-v)/(max-min)) * (H-pad*2);
-      return [x,y];
-    });
-
+    const W=rect.width,H=rect.height,padX=10,padY=18;
+    let min=Math.min(...values),max=Math.max(...values);
+    if(max===min){ max+=1; min-=1; }
+    const extra=Math.max((max-min)*.18,1); max+=extra; min-=extra;
+    const points=values.map((v,i)=>({x:padX+i*((W-padX*2)/(values.length-1)),y:padY+((max-v)/(max-min))*(H-padY*2),value:v,label:labels[i]}));
+    chartHitPoints=points; chartMeta={W,H,padX,padY,min,max};
     ctx.clearRect(0,0,W,H);
 
-    const baseline = state.initialBankroll;
-    const baselineY = pad + ((max-baseline)/(max-min))*(H-pad*2);
-    ctx.save();
-    ctx.setLineDash([2,7]);
-    ctx.strokeStyle = "rgba(60,68,78,.18)";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(pad,baselineY);
-    ctx.lineTo(W-pad,baselineY);
-    ctx.stroke();
+    // subtle horizontal guides
+    ctx.save(); ctx.strokeStyle="rgba(80,88,98,.07)"; ctx.lineWidth=1;
+    for(let i=1;i<=3;i++){ const y=padY+(H-padY*2)*(i/4); ctx.beginPath();ctx.moveTo(padX,y);ctx.lineTo(W-padX,y);ctx.stroke(); }
     ctx.restore();
 
-    const endValue = values[values.length-1];
-    const isGain = endValue >= state.initialBankroll;
-    const color = isGain ? "#11a36a" : "#ef4f4f";
+    const endValue=values[values.length-1], isGain=endValue>=runningBefore;
+    const color=isGain?"#13ad5a":"#ef4444";
+    const grad=ctx.createLinearGradient(0,padY,0,H-padY);
+    grad.addColorStop(0,isGain?"rgba(19,173,90,.22)":"rgba(239,68,68,.20)");
+    grad.addColorStop(.62,isGain?"rgba(19,173,90,.055)":"rgba(239,68,68,.05)");
+    grad.addColorStop(1,"rgba(255,255,255,0)");
 
-    const gradient = ctx.createLinearGradient(0,pad,0,H-pad);
-    gradient.addColorStop(0,isGain ? "rgba(17,163,106,.22)" : "rgba(239,79,79,.20)");
-    gradient.addColorStop(1,isGain ? "rgba(17,163,106,0)" : "rgba(239,79,79,0)");
+    // smooth Catmull-Rom-like cubic path
+    const path=()=>{
+      ctx.beginPath(); ctx.moveTo(points[0].x,points[0].y);
+      for(let i=0;i<points.length-1;i++){
+        const p0=points[Math.max(0,i-1)],p1=points[i],p2=points[i+1],p3=points[Math.min(points.length-1,i+2)];
+        const cp1x=p1.x+(p2.x-p0.x)/6, cp1y=p1.y+(p2.y-p0.y)/6;
+        const cp2x=p2.x-(p3.x-p1.x)/6, cp2y=p2.y-(p3.y-p1.y)/6;
+        ctx.bezierCurveTo(cp1x,cp1y,cp2x,cp2y,p2.x,p2.y);
+      }
+    };
+    path(); ctx.lineTo(points.at(-1).x,H-padY);ctx.lineTo(points[0].x,H-padY);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+    path(); ctx.strokeStyle=color;ctx.lineWidth=3;ctx.lineJoin="round";ctx.lineCap="round";ctx.shadowColor=isGain?"rgba(19,173,90,.20)":"rgba(239,68,68,.18)";ctx.shadowBlur=8;ctx.stroke();ctx.shadowBlur=0;
 
-    ctx.beginPath();
-    points.forEach((p,i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1]));
-    ctx.lineTo(points[points.length-1][0],H-pad);
-    ctx.lineTo(points[0][0],H-pad);
-    ctx.closePath();
-    ctx.fillStyle = gradient;
-    ctx.fill();
+    const idx=chartHoverIndex==null ? points.length-1 : Math.max(0,Math.min(chartHoverIndex,points.length-1));
+    const hp=points[idx];
+    if(chartHoverIndex!=null){
+      ctx.save();ctx.setLineDash([3,5]);ctx.strokeStyle="rgba(20,24,30,.20)";ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(hp.x,padY);ctx.lineTo(hp.x,H-padY);ctx.stroke();ctx.restore();
+    }
+    ctx.beginPath();ctx.arc(hp.x,hp.y,chartHoverIndex!=null?5.5:4,0,Math.PI*2);ctx.fillStyle="#fff";ctx.fill();ctx.lineWidth=3;ctx.strokeStyle=color;ctx.stroke();
 
-    ctx.beginPath();
-    points.forEach((p,i) => i ? ctx.lineTo(p[0],p[1]) : ctx.moveTo(p[0],p[1]));
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 3;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.stroke();
+    if(chartHoverIndex!=null){
+      const val=money(hp.value);
+      let dateText="Inicio";
+      if(hp.label && hp.label!=="Inicio"){
+        const d=new Date(hp.label); if(!isNaN(d)) dateText=d.toLocaleString("es-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+      }
+      ctx.font='800 13px -apple-system,BlinkMacSystemFont,"SF Pro Display",Arial';
+      const tw=Math.max(ctx.measureText(val).width,ctx.measureText(dateText).width)+24, th=48;
+      let tx=Math.min(Math.max(hp.x-tw/2,4),W-tw-4), ty=Math.max(4,hp.y-th-16);
+      ctx.fillStyle="rgba(9,11,13,.92)";ctx.beginPath();ctx.roundRect(tx,ty,tw,th,12);ctx.fill();
+      ctx.fillStyle="#fff";ctx.fillText(val,tx+12,ty+19);
+      ctx.font='700 9px -apple-system,BlinkMacSystemFont,"SF Pro Display",Arial';ctx.fillStyle="rgba(255,255,255,.68)";ctx.fillText(dateText,tx+12,ty+36);
+    }
+  }
 
-    const last = points[points.length-1];
-    const prev = points[Math.max(0, points.length-2)] || last;
-    const angle = Math.atan2(last[1]-prev[1], last[0]-prev[0]);
-    ctx.save(); ctx.translate(last[0],last[1]); ctx.rotate(angle);
-    ctx.beginPath(); ctx.moveTo(5.5,0); ctx.lineTo(-6,-5); ctx.lineTo(-3,0); ctx.lineTo(-6,5); ctx.closePath();
-    ctx.fillStyle=color; ctx.fill(); ctx.restore();
+  function setChartPointer(clientX){
+    const canvas=$("bankrollChart"), r=canvas.getBoundingClientRect();
+    const x=clientX-r.left;
+    if(!chartHitPoints.length) return;
+    let best=0,dist=Infinity;
+    chartHitPoints.forEach((p,i)=>{ const d=Math.abs(p.x-x); if(d<dist){dist=d;best=i;} });
+    chartHoverIndex=best; renderChart();
   }
 
   function openModal(b = null){
@@ -1405,6 +1398,7 @@ body{background:#f4f5f7}
       if(!parsed || !Array.isArray(parsed.bets) || !Number.isFinite(Number(parsed.initialBankroll))) throw new Error();
       state = {
         initialBankroll:Number(parsed.initialBankroll),
+        riskPercent:Number(parsed.riskPercent) || 5,
         bets:parsed.bets
       };
       save();
@@ -1424,6 +1418,12 @@ body{background:#f4f5f7}
     render();
     toast("Datos reiniciados");
   });
+
+  const chartCanvas = $("bankrollChart");
+  chartCanvas.addEventListener("pointerdown", e => { chartCanvas.setPointerCapture?.(e.pointerId); setChartPointer(e.clientX); });
+  chartCanvas.addEventListener("pointermove", e => { if(e.pointerType === "mouse" || e.buttons) setChartPointer(e.clientX); });
+  chartCanvas.addEventListener("pointerleave", () => { chartHoverIndex=null; renderChart(); });
+  chartCanvas.addEventListener("pointerup", e => { if(e.pointerType !== "mouse") { setTimeout(()=>{chartHoverIndex=null;renderChart();},900); } });
 
   window.addEventListener("resize", renderChart);
 
