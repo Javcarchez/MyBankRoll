@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -32,7 +32,7 @@
   --shadow-soft:0 8px 24px rgba(28,36,46,.07);
 }
 *{box-sizing:border-box}
-html,body{margin:0;width:100%;max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;touch-action:pan-y}
+html,body{margin:0;width:100%;max-width:100%;overflow-x:hidden;-webkit-text-size-adjust:100%;touch-action:auto}
 body{
   min-height:100vh;
   color:var(--text);
@@ -1797,6 +1797,257 @@ html[data-theme="dark"] .paste-ticket-text{
   .bet-card{padding:14px}
   .bet-pick{-webkit-line-clamp:6}
 }
+
+
+/* ===== Ticket details inside bet cards ===== */
+.bet-card-notes{
+  margin-top:11px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:rgba(247,249,251,.82);
+  overflow:hidden;
+}
+.bet-card-notes summary{
+  min-height:42px;
+  padding:9px 11px;
+  list-style:none;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  user-select:none;
+  -webkit-user-select:none;
+}
+.bet-card-notes summary::-webkit-details-marker{display:none}
+.bet-note-summary-main{
+  min-width:0;
+  display:flex;
+  align-items:center;
+  gap:7px;
+}
+.bet-note-summary-main svg{
+  width:15px;height:15px;flex:0 0 auto;
+  fill:none;stroke:currentColor;stroke-width:1.7;
+  stroke-linecap:round;stroke-linejoin:round;
+  color:var(--muted);
+}
+.bet-note-summary-main b{
+  font-size:9px;
+  font-weight:850;
+  color:var(--text);
+  white-space:nowrap;
+}
+.bet-note-summary-main small{
+  font-size:7.7px;
+  color:var(--muted);
+  white-space:nowrap;
+}
+.bet-note-chevron{
+  font-size:12px;
+  line-height:1;
+  color:var(--muted);
+  transition:transform .18s ease;
+}
+.bet-card-notes:not([open]) .bet-note-chevron{transform:rotate(180deg)}
+.bet-note-body{
+  border-top:1px solid var(--line);
+  padding:10px 11px 11px;
+}
+.bet-note-legs{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:8px;
+}
+.bet-note-leg{
+  min-width:0;
+  padding:9px 10px;
+  border-radius:11px;
+  background:rgba(255,255,255,.76);
+  border:1px solid var(--line);
+}
+.bet-note-index{
+  font-size:7.2px;
+  color:var(--muted);
+  font-weight:820;
+  text-transform:uppercase;
+  letter-spacing:.06em;
+  margin-bottom:4px;
+}
+.bet-note-leg strong{
+  display:block;
+  min-width:0;
+  font-size:9px;
+  line-height:1.3;
+  color:var(--text);
+  overflow-wrap:anywhere;
+}
+.bet-note-leg span{
+  display:block;
+  min-width:0;
+  margin-top:3px;
+  font-size:8px;
+  line-height:1.38;
+  color:var(--text-2);
+  overflow-wrap:anywhere;
+}
+.bet-note-extra{
+  margin-top:8px;
+  padding:9px 10px;
+  border-radius:11px;
+  background:rgba(255,255,255,.66);
+  border:1px solid var(--line);
+  color:var(--text-2);
+  font-size:8px;
+  line-height:1.45;
+  white-space:normal;
+  overflow-wrap:anywhere;
+}
+.bet-note-ticket-id{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:9px;
+  margin-top:9px;
+  padding-top:9px;
+  border-top:1px solid var(--line);
+}
+.bet-note-ticket-id span{
+  color:var(--muted);
+  font-size:7.4px;
+  font-weight:750;
+}
+.bet-note-ticket-id strong{
+  min-width:0;
+  text-align:right;
+  color:var(--muted);
+  font-size:7.5px;
+  font-weight:800;
+  overflow-wrap:anywhere;
+}
+
+/* Settled WIN / LOST cards keep ticket details as internal glass */
+.bet-card[data-status="win"] .bet-card-notes,
+.bet-card[data-status="loss"] .bet-card-notes,
+.bet-card.status-win .bet-card-notes,
+.bet-card.status-loss .bet-card-notes{
+  background:linear-gradient(145deg,rgba(255,255,255,.085),rgba(255,255,255,.035));
+  border-color:rgba(255,255,255,.16);
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+}
+.bet-card[data-status="win"] .bet-card-notes summary,
+.bet-card[data-status="loss"] .bet-card-notes summary,
+.bet-card.status-win .bet-card-notes summary,
+.bet-card.status-loss .bet-card-notes summary,
+.bet-card[data-status="win"] .bet-note-body,
+.bet-card[data-status="loss"] .bet-note-body,
+.bet-card.status-win .bet-note-body,
+.bet-card.status-loss .bet-note-body{
+  border-color:rgba(255,255,255,.13);
+}
+.bet-card[data-status="win"] .bet-note-summary-main b,
+.bet-card[data-status="loss"] .bet-note-summary-main b,
+.bet-card.status-win .bet-note-summary-main b,
+.bet-card.status-loss .bet-note-summary-main b,
+.bet-card[data-status="win"] .bet-note-leg strong,
+.bet-card[data-status="loss"] .bet-note-leg strong,
+.bet-card.status-win .bet-note-leg strong,
+.bet-card.status-loss .bet-note-leg strong{
+  color:#fff;
+}
+.bet-card[data-status="win"] .bet-note-summary-main small,
+.bet-card[data-status="loss"] .bet-note-summary-main small,
+.bet-card[data-status="win"] .bet-note-summary-main svg,
+.bet-card[data-status="loss"] .bet-note-summary-main svg,
+.bet-card[data-status="win"] .bet-note-chevron,
+.bet-card[data-status="loss"] .bet-note-chevron,
+.bet-card[data-status="win"] .bet-note-index,
+.bet-card[data-status="loss"] .bet-note-index,
+.bet-card[data-status="win"] .bet-note-ticket-id span,
+.bet-card[data-status="loss"] .bet-note-ticket-id span,
+.bet-card[data-status="win"] .bet-note-ticket-id strong,
+.bet-card[data-status="loss"] .bet-note-ticket-id strong,
+.bet-card.status-win .bet-note-summary-main small,
+.bet-card.status-loss .bet-note-summary-main small,
+.bet-card.status-win .bet-note-summary-main svg,
+.bet-card.status-loss .bet-note-summary-main svg,
+.bet-card.status-win .bet-note-chevron,
+.bet-card.status-loss .bet-note-chevron,
+.bet-card.status-win .bet-note-index,
+.bet-card.status-loss .bet-note-index,
+.bet-card.status-win .bet-note-ticket-id span,
+.bet-card.status-loss .bet-note-ticket-id span,
+.bet-card.status-win .bet-note-ticket-id strong{
+  color:rgba(255,255,255,.64);
+}
+.bet-card[data-status="win"] .bet-note-leg,
+.bet-card[data-status="loss"] .bet-note-leg,
+.bet-card[data-status="win"] .bet-note-extra,
+.bet-card[data-status="loss"] .bet-note-extra,
+.bet-card.status-win .bet-note-leg,
+.bet-card.status-loss .bet-note-leg,
+.bet-card.status-win .bet-note-extra,
+.bet-card.status-loss .bet-note-extra{
+  background:rgba(255,255,255,.055);
+  border-color:rgba(255,255,255,.12);
+}
+.bet-card[data-status="win"] .bet-note-leg span,
+.bet-card[data-status="loss"] .bet-note-leg span,
+.bet-card[data-status="win"] .bet-note-extra,
+.bet-card[data-status="loss"] .bet-note-extra,
+.bet-card.status-win .bet-note-leg span,
+.bet-card.status-loss .bet-note-leg span,
+.bet-card.status-win .bet-note-extra,
+.bet-card.status-loss .bet-note-extra{
+  color:rgba(255,255,255,.74);
+}
+
+/* Dark neutral pending card notes */
+html[data-theme="dark"] .bet-card[data-status="pending"] .bet-card-notes,
+html[data-theme="dark"] .bet-card.status-pending .bet-card-notes{
+  background:#0a0d10;
+  border-color:rgba(255,255,255,.08);
+}
+html[data-theme="dark"] .bet-card[data-status="pending"] .bet-note-leg,
+html[data-theme="dark"] .bet-card[data-status="pending"] .bet-note-extra,
+html[data-theme="dark"] .bet-card.status-pending .bet-note-leg,
+html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
+  background:rgba(255,255,255,.035);
+  border-color:rgba(255,255,255,.07);
+}
+
+/* ===== Dashboard KPI row: horizontal scroll ONLY in this area ===== */
+/* body stays horizontally locked; this row owns the side swipe */
+@media(max-width:899px){
+  .kpis{
+    display:flex !important;
+    gap:9px;
+    width:100%;
+    max-width:100%;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding:2px 2px 9px !important;
+    margin:0 0 9px;
+    scroll-snap-type:x proximity;
+    scroll-padding-inline:2px;
+    overscroll-behavior-inline:contain;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    touch-action:auto;
+  }
+  .kpis::-webkit-scrollbar{display:none}
+  .kpis .kpi{
+    flex:0 0 clamp(158px,43vw,200px);
+    width:clamp(158px,43vw,200px);
+    min-width:clamp(158px,43vw,200px);
+    scroll-snap-align:start;
+  }
+
+  .bet-note-legs{grid-template-columns:1fr}
+}
+
+
 </style>
 </head>
 <body>
@@ -2398,6 +2649,85 @@ html[data-theme="dark"] .paste-ticket-text{
     }[c]));
   }
 
+  function parseBetCardNotes(notes){
+    const raw=String(notes||"").trim();
+    if(!raw) return null;
+
+    const blocks=raw.split(/\n\s*\n/).map(x=>x.trim()).filter(Boolean);
+    const legs=[];
+    const extra=[];
+    let ticketId="";
+
+    blocks.forEach(block=>{
+      const ticket=block.match(/^Ticket ID:\s*(.+)$/i);
+      if(ticket){
+        ticketId=ticket[1].trim();
+        return;
+      }
+
+      const lines=block.split(/\r?\n/).map(x=>x.trim()).filter(Boolean);
+      const legMatch=lines[0]?.match(/^Selección\s+(\d+):\s*$/i);
+      if(legMatch){
+        legs.push({
+          number:Number(legMatch[1]) || legs.length+1,
+          event:lines[1] || "",
+          detail:lines.slice(2).join(" · ")
+        });
+        return;
+      }
+
+      extra.push(block);
+    });
+
+    return {ticketId,legs,extra,raw};
+  }
+
+  function renderBetCardNotes(notes){
+    const data=parseBetCardNotes(notes);
+    if(!data) return "";
+
+    const legLabel=data.legs.length
+      ? `${data.legs.length} ${data.legs.length===1 ? "selección" : "selecciones"}`
+      : "nota";
+
+    const legsHtml=data.legs.length ? `
+      <div class="bet-note-legs">
+        ${data.legs.map(leg=>`
+          <div class="bet-note-leg">
+            <div class="bet-note-index">Selección ${leg.number}</div>
+            ${leg.event ? `<strong>${esc(leg.event)}</strong>` : ""}
+            ${leg.detail ? `<span>${esc(leg.detail)}</span>` : ""}
+          </div>
+        `).join("")}
+      </div>
+    ` : "";
+
+    const extraHtml=data.extra.length ? `
+      <div class="bet-note-extra">${data.extra.map(x=>esc(x)).join("<br><br>")}</div>
+    ` : "";
+
+    return `
+      <details class="bet-card-notes" open>
+        <summary>
+          <span class="bet-note-summary-main">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M6 3.5h9l3 3V20.5H6z"/>
+              <path d="M15 3.5v4h4M9 11h6M9 15h6"/>
+            </svg>
+            <b>Detalles del ticket</b>
+            <small>${esc(legLabel)}</small>
+          </span>
+          <span class="bet-note-chevron" aria-hidden="true">⌃</span>
+        </summary>
+        <div class="bet-note-body">
+          ${legsHtml}
+          ${extraHtml}
+          ${data.ticketId ? `<div class="bet-note-ticket-id"><span>Ticket ID</span><strong>${esc(data.ticketId)}</strong></div>` : ""}
+        </div>
+      </details>
+    `;
+  }
+
   function betCard(b){
     const potential = americanProfit(b.stake, b.odds);
     const result = betDelta(b);
@@ -2436,6 +2766,8 @@ html[data-theme="dark"] .paste-ticket-text{
           <div class="status ${b.status}">${statusLabel}</div>
           ${cardFooterDate(b) ? `<div class="settled-date">${cardFooterDate(b)}</div>` : ""}
         </div>
+
+        ${renderBetCardNotes(b.notes)}
       </article>
     `;
   }
