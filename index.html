@@ -3021,7 +3021,7 @@ html[data-theme="dark"] .paste-ticket-text{
     const out={
       sport:null,book:null,event:null,pick:null,odds:null,stake:null,payout:null,
       date:null,time:null,betType:null,legs:null,settledResult:null,
-      ticketId:null,selections:[],missingTeams:false,confidence:0,found:[]
+      ticketId:null,selections:[],selectionDetails:[],missingTeams:false,confidence:0,found:[]
     };
 
     for(const [sport,re] of SCAN_SPORTS){
@@ -3203,6 +3203,91 @@ html[data-theme="dark"] .paste-ticket-text{
       out.pick=out.betType;
     }
 
+    // Structured per-leg details for Notes.
+    // Typical sportsbook order: Selection -> Market -> Event -> Time.
+    const isMarketDetailLine=line=>{
+      const v=String(line||"").trim();
+      if(!v || badTicketLine(v) || looksLikeEvent(v)) return false;
+      return /^(?:(?:1ST|2ND|3RD|4TH|FIRST|SECOND)\s+(?:INNING|HALF|QUARTER|PERIOD)\s+)?(?:TEAM\s+)?TOTAL\s+(?:RUNS|POINTS|GOALS)|^(?:RUN\s+LINE|PUCK\s+LINE|MONEYLINE|SPREAD|TOTAL)$/i.test(v);
+    };
+
+    const cleanLegSelection=line=>String(line||"")
+      .replace(/\s+[+-]\s*\d{3,4}\s*$/,"")
+      .replace(/\s+/g," ")
+      .trim();
+
+    const selectionDetailCandidates=[];
+    for(let i=0;i<lines.length;i++){
+      const line=lines[i];
+      if(isMarketDetailLine(line)) continue;
+      if(!looksLikeSelection(line)) continue;
+      if(looksLikeEvent(line) || badTicketLine(line)) continue;
+      if(/\b\d+\s*[- ]?\s*bet\s+parlay\b/i.test(line)) continue;
+      if(/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(line)) continue;
+
+      const selection=cleanLegSelection(line);
+      if(!selection) continue;
+
+      let market="";
+      let event="";
+
+      for(let j=i+1;j<Math.min(lines.length,i+6);j++){
+        const candidate=lines[j];
+        if(!market && isMarketDetailLine(candidate)){
+          market=candidate.trim();
+          continue;
+        }
+        if(!event && looksLikeEvent(candidate)){
+          event=candidate.trim();
+          break;
+        }
+        if(j>i+1 && looksLikeSelection(candidate) && !isMarketDetailLine(candidate)) break;
+      }
+
+      if(!event){
+        for(let j=i-1;j>=Math.max(0,i-4);j--){
+          if(looksLikeEvent(lines[j])){
+            event=lines[j].trim();
+            break;
+          }
+        }
+      }
+
+      selectionDetailCandidates.push({selection,market,event,sourceIndex:i});
+    }
+
+    const detailSeen=new Set();
+    let selectionDetails=selectionDetailCandidates.filter(item=>{
+      const key=[
+        item.selection.toLowerCase(),
+        item.market.toLowerCase(),
+        item.event.toLowerCase()
+      ].join("|");
+      if(detailSeen.has(key)) return false;
+      detailSeen.add(key);
+      return true;
+    });
+
+    if(out.legs && selectionDetails.length>out.legs){
+      selectionDetails=selectionDetails.slice(0,out.legs);
+    }
+
+    selectionDetails=selectionDetails.map((item,index)=>({
+      selection:item.selection || selections[index] || "",
+      market:item.market || "",
+      event:item.event || eventLines[index] || ""
+    }));
+
+    if(!selectionDetails.length && selections.length){
+      selectionDetails=selections.map((selection,index)=>({
+        selection,
+        market:"",
+        event:eventLines[index] || ""
+      }));
+    }
+
+    out.selectionDetails=selectionDetails;
+
     // For parlays, if matchup rows are not visible, never fabricate teams.
     if(out.betType && !out.event){
       out.missingTeams=true;
@@ -3241,15 +3326,48 @@ html[data-theme="dark"] .paste-ticket-text{
     if(data.date) $("fDate").value=data.date;
     if(data.time) $("fTime").value=data.time;
 
-    // Preserve anything the user already wrote and append metadata only once.
-    const notes=$("fNotes").value
-      .split(" · ").map(x=>x.trim()).filter(Boolean);
-    if(data.ticketId) appendUniqueNote(notes,`Ticket ID: ${data.ticketId}`);
-    if(data.payout!=null) appendUniqueNote(notes,`Payout leído: ${money(data.payout)}`);
-    if(data.settledResult==="win") appendUniqueNote(notes,"Ticket detectado como pagado/ganador");
-    else if(data.settledResult==="loss") appendUniqueNote(notes,"Ticket detectado como perdido");
-    else if(data.settledResult==="push") appendUniqueNote(notes,"Ticket detectado como push/void");
-    $("fNotes").value=notes.join(" · ");
+    // Keep useful ticket identity + per-leg detail in Notes.
+    // Do NOT duplicate payout here.
+    const existingLines=String($("fNotes").value||"")
+      .split(/\r?\n|\s+·\s+/)
+      .map(x=>x.trim())
+      .filter(Boolean);
+
+    const manualLines=existingLines.filter(line=>
+      !/^Ticket ID:/i.test(line) &&
+      !/^Payout leído:/i.test(line) &&
+      !/^Selección\s+\d+:/i.test(line) &&
+      !/^Ticket detectado como /i.test(line)
+    );
+
+    const generated=[];
+    if(data.ticketId) generated.push(`Ticket ID: ${data.ticketId}`);
+
+    const details=Array.isArray(data.selectionDetails) ? data.selectionDetails : [];
+    if(details.length){
+      details.forEach((leg,index)=>{
+        const event=String(leg?.event||"").trim();
+        const selection=String(leg?.selection||data.selections?.[index]||"").trim();
+        const market=String(leg?.market||"").trim();
+        const parts=[selection,market].filter(Boolean);
+
+        generated.push(
+          `Selección ${index+1}:` +
+          (event ? `\n${event}` : "") +
+          (parts.length ? `\n${parts.join(" · ")}` : "")
+        );
+      });
+    }else if(Array.isArray(data.selections)){
+      data.selections.forEach((selection,index)=>{
+        generated.push(`Selección ${index+1}:\n${selection}`);
+      });
+    }
+
+    if(data.settledResult==="win") generated.push("Ticket detectado como pagado/ganador");
+    else if(data.settledResult==="loss") generated.push("Ticket detectado como perdido");
+    else if(data.settledResult==="push") generated.push("Ticket detectado como push/void");
+
+    $("fNotes").value=[...manualLines,...generated].filter(Boolean).join("\n\n");
 
     updateCalc();
   }
@@ -3264,7 +3382,15 @@ html[data-theme="dark"] .paste-ticket-text{
     push("Sportsbook",data.book);
     push("Tipo",data.betType);
     push("ID ticket",data.ticketId);
-    if(Array.isArray(data.selections) && data.selections.length){
+    if(Array.isArray(data.selectionDetails) && data.selectionDetails.length){
+      data.selectionDetails.forEach((leg,index)=>{
+        const detail=[
+          leg?.event,
+          [leg?.selection,leg?.market].filter(Boolean).join(" · ")
+        ].filter(Boolean).join(" — ");
+        push(`Selección ${index+1}`,detail);
+      });
+    }else if(Array.isArray(data.selections) && data.selections.length){
       data.selections.forEach((selection,index)=>push(`Selección ${index+1}`,selection));
     }
     push("Cuota",data.odds!=null ? (data.odds>0?"+":"")+data.odds : null);
