@@ -2585,10 +2585,22 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     return odds > 0 ? stake * (odds / 100) : stake * (100 / Math.abs(odds));
   }
 
+  function isUsableTicketPayout(payout, stake, settledResult=null){
+    const p=Number(payout);
+    const s=Number(stake)||0;
+    if(!Number.isFinite(p) || p<=0 || !Number.isFinite(s) || s<0) return false;
+
+    // A normal winning/pending ticket must return more than the stake.
+    if(p > s + 0.005) return true;
+
+    // Only an explicitly detected PUSH/VOID may legitimately return exactly the stake.
+    return settledResult==="push" && Math.abs(p-s) < 0.01;
+  }
+
   function ticketProfit(b){
     const stake=Number(b?.stake)||0;
     const payout=Number(b?.payout);
-    if(Number.isFinite(payout) && payout > 0 && payout >= stake){
+    if(isUsableTicketPayout(payout,stake,b?.status==="push" ? "push" : null)){
       return payout - stake;
     }
     return americanProfit(stake,b?.odds);
@@ -2771,10 +2783,11 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
   }
 
   function betCard(b){
-    const potential = ticketProfit(b);
-    const exactPayout = Number.isFinite(Number(b.payout)) && Number(b.payout) > 0
+    const stakeValue = Number(b.stake || 0);
+    const potential = americanProfit(stakeValue,b.odds);
+    const exactPayout = isUsableTicketPayout(b.payout,stakeValue,b.status==="push" ? "push" : null)
       ? Number(b.payout)
-      : Number(b.stake || 0) + potential;
+      : stakeValue + potential;
     const result = betDelta(b);
     const statusLabel = {pending:"PENDIENTE",win:"WIN",loss:"LOST",push:"PUSH"}[b.status] || "PENDIENTE";
     return `
@@ -3264,6 +3277,9 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     const stake = Number($("fStake").value) || 0;
     const odds = Number($("fOdds").value) || 0;
 
+    // Potential profit is always derived from the current stake + American odds.
+    const potential = americanProfit(stake,odds);
+
     const editingBet = editingId ? state.bets.find(x=>x.id===editingId) : null;
     const scanStake=Number(lastScanMeta?.stake);
     const scanOdds=Number(lastScanMeta?.odds);
@@ -3271,20 +3287,17 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     const editPayout=Number(editingBet?.payout);
 
     const exactFromScan =
-      Number.isFinite(scanPayout) && scanPayout>0 &&
       Number.isFinite(scanStake) && Math.abs(scanStake-stake)<0.005 &&
-      Number.isFinite(scanOdds) && scanOdds===odds;
+      Number.isFinite(scanOdds) && scanOdds===odds &&
+      isUsableTicketPayout(scanPayout,stake,lastScanMeta?.settledResult || null);
 
     const exactFromEdit =
       !lastScanMeta &&
-      Number.isFinite(editPayout) && editPayout>0 &&
       Math.abs(Number(editingBet?.stake||0)-stake)<0.005 &&
-      Number(editingBet?.odds)===odds;
+      Number(editingBet?.odds)===odds &&
+      isUsableTicketPayout(editPayout,stake,editingBet?.status==="push" ? "push" : null);
 
     const exactPayout = exactFromScan ? scanPayout : (exactFromEdit ? editPayout : null);
-    const potential = exactPayout!=null
-      ? Math.max(0,exactPayout-stake)
-      : americanProfit(stake,odds);
 
     $("calcFive").textContent = money(five);
     $("calcProfit").textContent = money(potential);
@@ -3508,11 +3521,51 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     const wagerMatch=text.match(/(?:wager|stake|risk|amount wagered|bet amount|apuesta|importe)[\s\S]{0,45}?\$\s*([\d,]+(?:\.\d{1,2})?)/i);
     if(wagerMatch) out.stake=cleanMoney(wagerMatch[1]);
 
-    const paidMatch=text.match(/(?:paid|payout|total return|returns?)[\s\S]{0,45}?\$\s*([\d,]+(?:\.\d{1,2})?)/i);
-    if(paidMatch) out.payout=cleanMoney(paidMatch[1]);
+    const moneyFromLine=line=>{
+      const m=String(line||"").match(/\$\s*([\d,]+(?:\.\d{1,2})?)/);
+      return m ? cleanMoney(m[1]) : null;
+    };
+
+    const readPayoutNearLabel=()=>{
+      const payoutLabel=/\b(?:paid|payout|total return|returns?)\b/i;
+      const blockingLabel=/\b(?:wager|stake|risk|amount wagered|bet amount|apuesta|importe|cash out|early cash out|id|share)\b/i;
+
+      for(let i=0;i<lines.length;i++){
+        const line=lines[i];
+        if(!payoutLabel.test(line) || /\bcash out\b/i.test(line)) continue;
+
+        const sameLine=moneyFromLine(line);
+        if(sameLine!=null) return sameLine;
+
+        // Sportsbook layouts often render "Payout" on one line and "$119.87" on the next.
+        for(let j=i+1;j<=Math.min(i+2,lines.length-1);j++){
+          const next=lines[j];
+          if(/\bcash out\b/i.test(next)) break;
+
+          const amount=moneyFromLine(next);
+          if(amount!=null) return amount;
+
+          if(blockingLabel.test(next)) break;
+        }
+      }
+      return null;
+    };
+
+    const explicitPayout=readPayoutNearLabel();
+    if(explicitPayout!=null) out.payout=explicitPayout;
 
     const allMoney=[...text.matchAll(/\$\s*([\d,]+(?:\.\d{1,2})?)/g)]
       .map(m=>cleanMoney(m[1])).filter(v=>v!=null && v>0);
+
+    // Cash-out offers are NOT the ticket payout.
+    const nonCashOutMoney=[];
+    lines.forEach(line=>{
+      if(/\bcash out\b/i.test(line)) return;
+      [...String(line).matchAll(/\$\s*([\d,]+(?:\.\d{1,2})?)/g)]
+        .map(m=>cleanMoney(m[1]))
+        .filter(v=>v!=null && v>0)
+        .forEach(v=>nonCashOutMoney.push(v));
+    });
 
     // Common settled-ticket layout: Wager / Paid labels with two dollar amounts.
     if(out.stake==null && /\bwager\b/i.test(text) && allMoney.length){
@@ -3522,10 +3575,16 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
         out.stake=allMoney[0];
       }
     }
-    if(out.payout==null && /\bpaid\b|\bpayout\b/i.test(text) && allMoney.length>=2){
-      out.payout=Math.max(...allMoney);
+
+    // Only use a fallback payout when a payout/paid label is actually present.
+    // Prefer an amount greater than the stake and ignore Early Cash Out values.
+    if(out.payout==null && /\bpaid\b|\bpayout\b|\btotal return\b|\breturns?\b/i.test(text)){
+      const candidates=nonCashOutMoney.filter(v=>out.stake==null || v>out.stake+0.005);
+      if(candidates.length) out.payout=Math.max(...candidates);
     }
+
     if(out.stake!=null) out.found.push("stake");
+    if(out.payout!=null) out.found.push("payout");
 
     // Date / time if visible
     if(/\btoday\b|\bhoy\b/i.test(text)) out.date=today();
@@ -4215,9 +4274,13 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       notes:$("fNotes").value.trim(),
       ticketId:lastScanMeta?.ticketId || editingBet?.ticketId || null,
       ticketDetails:scannerDetails.length ? scannerDetails : (editingBet?.ticketDetails || []),
-      payout:Number.isFinite(scannedPayout) && scannedPayout > 0
+      payout:isUsableTicketPayout(scannedPayout,stake,lastScanMeta?.settledResult || null)
         ? scannedPayout
-        : (Number.isFinite(Number(editingBet?.payout)) && Number(editingBet.payout)>0 ? Number(editingBet.payout) : null)
+        : (isUsableTicketPayout(
+            editingBet?.payout,
+            stake,
+            editingBet?.status==="push" ? "push" : null
+          ) ? Number(editingBet.payout) : null)
     };
 
     if(editingId){
