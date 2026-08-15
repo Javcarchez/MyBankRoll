@@ -497,7 +497,7 @@ input,select,textarea{color:var(--text)}
   background:rgba(255,255,255,.83);
   outline:none;
 }
-.field textarea{min-height:70px;resize:vertical}
+.field textarea{min-height:145px;max-height:420px;resize:vertical;overflow:auto}
 .calc-box{
   border-radius:16px;
   padding:11px;
@@ -1768,6 +1768,35 @@ html[data-theme="dark"] .paste-ticket-text{
   .paste-ticket-text{font-size:16px}
 }
 
+
+/* ===== Ticket card readability + expanded notes ===== */
+#fNotes{
+  min-height:165px;
+  max-height:440px;
+  resize:vertical;
+  overflow:auto;
+  line-height:1.48;
+}
+.bet-top > div:first-child{min-width:0}
+.bet-title{
+  line-height:1.25;
+  overflow-wrap:anywhere;
+}
+.bet-pick{
+  font-size:9.5px;
+  line-height:1.45;
+  overflow-wrap:anywhere;
+  white-space:normal;
+  display:-webkit-box;
+  -webkit-box-orient:vertical;
+  -webkit-line-clamp:5;
+  overflow:hidden;
+}
+@media (max-width:520px){
+  #fNotes{min-height:185px;max-height:460px}
+  .bet-card{padding:14px}
+  .bet-pick{-webkit-line-clamp:6}
+}
 </style>
 </head>
 <body>
@@ -2379,7 +2408,7 @@ html[data-theme="dark"] .paste-ticket-text{
           <div>
             <div class="bet-sport">${esc(b.sport)} · ${esc(b.book || "Sportsbook")}</div>
             <div class="bet-title">${esc(b.event)}</div>
-            <div class="bet-pick">${esc(b.pick)}</div>
+            <div class="bet-pick">${esc(b.pick).replace(/\s+\+\s+/g," · ")}</div>
           </div>
           <div class="odds">${Number(b.odds) > 0 ? "+" : ""}${b.odds}</div>
         </div>
