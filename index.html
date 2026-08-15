@@ -1724,6 +1724,50 @@ html[data-theme="dark"] .metric-track{background:#20252a}
   .health-item small{font-size:7.3px}
 }
 
+
+/* ===== Direct ticket text / clipboard input ===== */
+.scan-btn.paste-btn{grid-column:1/-1}
+.paste-ticket-panel{
+  display:none;
+  padding:10px;
+  border-radius:14px;
+  border:1px solid var(--line);
+  background:rgba(255,255,255,.60);
+  gap:8px;
+}
+.paste-ticket-panel.show{display:grid}
+.paste-ticket-head strong{display:block;font-size:9.5px;color:var(--text)}
+.paste-ticket-head small{
+  display:block;margin-top:3px;font-size:7.8px;line-height:1.4;color:var(--muted)
+}
+.paste-ticket-text{
+  width:100%;
+  min-height:118px;
+  resize:vertical;
+  border:1px solid var(--line-strong);
+  border-radius:12px;
+  padding:10px;
+  background:rgba(255,255,255,.84);
+  color:var(--text);
+  font-size:10px;
+  line-height:1.4;
+  outline:none;
+}
+.paste-ticket-actions{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.paste-ticket-hint{
+  font-size:7.7px;line-height:1.4;color:var(--muted)
+}
+html[data-theme="dark"] .paste-ticket-panel{
+  background:#0b0e11;border-color:rgba(255,255,255,.08)
+}
+html[data-theme="dark"] .paste-ticket-text{
+  background:#090c0f;border-color:rgba(255,255,255,.11);color:var(--text)
+}
+@media(max-width:420px){
+  .paste-ticket-actions{grid-template-columns:1fr}
+  .paste-ticket-text{font-size:16px}
+}
+
 </style>
 </head>
 <body>
@@ -2056,10 +2100,27 @@ html[data-theme="dark"] .metric-track{background:#20252a}
       <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="17" height="16" rx="2.5"/><circle cx="9" cy="9" r="1.5"/><path d="m5.5 17 4.5-4.5 3.2 3.2 2.1-2.1 3.2 3.4"/></svg>
       <span>Elegir foto</span>
     </button>
+          <button type="button" class="scan-btn paste-btn" id="pasteTicketBtn">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5h6"/><path d="M9 3h6a2 2 0 0 1 2 2v1h2v15H5V6h2V5a2 2 0 0 1 2-2Z"/><path d="M9 11h6M9 15h6"/></svg>
+      <span>Pegar texto del ticket</span>
+    </button>
         </div>
 
         <input id="scanCameraInput" type="file" accept="image/*" capture="environment" hidden>
         <input id="scanGalleryInput" type="file" accept="image/*" hidden>
+
+        <div class="paste-ticket-panel" id="pasteTicketPanel">
+          <div class="paste-ticket-head">
+            <strong>Pegar / compartir texto</strong>
+            <small>Si la casa de apuestas te deja copiar o compartir el ticket como texto, pégalo aquí. MyBankRoll lo lee directamente, sin OCR.</small>
+          </div>
+          <textarea class="paste-ticket-text" id="pasteTicketText" placeholder="Pega aquí el contenido del ticket…"></textarea>
+          <div class="paste-ticket-actions">
+            <button type="button" class="scan-btn" id="pasteClipboardBtn">Pegar del portapapeles</button>
+            <button type="button" class="scan-btn primary" id="parsePastedTicketBtn">Leer ticket</button>
+          </div>
+          <div class="paste-ticket-hint">El ID se usa para identificar el ticket y avisarte si intentas registrarlo dos veces.</div>
+        </div>
 
         <div class="ticket-preview" id="ticketPreview">
           <img id="ticketPreviewImg" alt="Vista previa del ticket">
@@ -2833,13 +2894,16 @@ html[data-theme="dark"] .metric-track{background:#20252a}
 
   function resetScannerUI(){
     const p=$("ticketPreview"), r=$("scanResult"), raw=$("scanRawText"),
-          bar=$("scanProgressBar"), guide=$("scanGuidance"), detected=$("scanDetected");
+          bar=$("scanProgressBar"), guide=$("scanGuidance"), detected=$("scanDetected"),
+          pastePanel=$("pasteTicketPanel"), pasteText=$("pasteTicketText");
     if(p) p.classList.remove("show");
     if(r){ r.classList.remove("show","warn"); r.textContent=""; }
     if(guide){ guide.classList.remove("show"); guide.textContent=""; }
     if(detected){ detected.classList.remove("show"); detected.innerHTML=""; }
     if(raw){ raw.classList.remove("show"); raw.textContent=""; }
     if(bar) bar.style.width="0%";
+    if(pastePanel) pastePanel.classList.remove("show");
+    if(pasteText) pasteText.value="";
     lastScanMeta=null;
   }
 
@@ -2957,7 +3021,7 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     const out={
       sport:null,book:null,event:null,pick:null,odds:null,stake:null,payout:null,
       date:null,time:null,betType:null,legs:null,settledResult:null,
-      missingTeams:false,confidence:0,found:[]
+      ticketId:null,selections:[],missingTeams:false,confidence:0,found:[]
     };
 
     for(const [sport,re] of SCAN_SPORTS){
@@ -2965,6 +3029,20 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     }
     for(const [book,re] of SCAN_BOOKS){
       if(re.test(text)){out.book=book;out.found.push("sportsbook");break;}
+    }
+
+    // Conservative baseball inference for sportsbook ticket text that omits "MLB".
+    // "TOTAL RUNS" / "RUN LINE" are explicit baseball-market labels in the supported model.
+    if(!out.sport && /\b(?:team\s+)?total\s+runs\b|\brun\s+line\b/i.test(text)){
+      out.sport="MLB";
+      out.found.push("deporte");
+    }
+
+    // Ticket / wager ID (identification + duplicate warning; it does not encode the bet).
+    const idMatch=text.match(/\b(?:ticket\s*id|bet\s*id|wager\s*id|id)\s*[:#-]?\s*([A-Za-z0-9_-]{6,})\b/i);
+    if(idMatch){
+      out.ticketId=idMatch[1];
+      out.found.push("id");
     }
 
     // Bet type / parlay count
@@ -2988,6 +3066,10 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     // American odds
     const labelledOdds=text.match(/(?:odds|cuota|american odds)\s*[:\-]?\s*([+-]\s*\d{3,4})/i);
     if(labelledOdds) out.odds=cleanOdds(labelledOdds[1]);
+    if(out.odds==null){
+      const parlayOdds=text.match(/\b(?:\d+\s*[- ]?\s*bet\s+)?parlay\b[^\n]{0,32}?([+-]\s*\d{3,4})/i);
+      if(parlayOdds) out.odds=cleanOdds(parlayOdds[1]);
+    }
     if(out.odds==null){
       const allOdds=[...text.matchAll(/(?:^|[\s(])([+-]\s*\d{3,4})(?=$|[\s)])/gm)]
         .map(m=>cleanOdds(m[1])).filter(v=>v!=null);
@@ -3019,6 +3101,7 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     if(out.stake!=null) out.found.push("stake");
 
     // Date / time if visible
+    if(/\btoday\b|\bhoy\b/i.test(text)) out.date=today();
     let dm=text.match(/\b(20\d{2})[-\/](\d{1,2})[-\/](\d{1,2})\b/);
     if(dm) out.date=`${dm[1]}-${String(dm[2]).padStart(2,"0")}-${String(dm[3]).padStart(2,"0")}`;
     if(!out.date){
@@ -3075,21 +3158,44 @@ html[data-theme="dark"] .metric-track{background:#20252a}
       out.found.push("evento");
     }
 
-    // Selections / legs
-    const selectionLines=uniq(lines.filter(looksLikeSelection));
-
-    // Hard Rock-style compact line: "Over 3.5, Over 6.5"
+    // Selections / legs.
+    // Keep the final pick concise. OCR/direct text often contains both a compact
+    // summary ("Over 3.5, Over 2.5") and the same selections again in expanded rows.
     const compactSelections=[];
     lines.forEach(line=>{
-      if(/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(line)){
-        line.split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>compactSelections.push(x));
+      const compact=/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i;
+      if(compact.test(line)){
+        line.split(",").map(x=>x.trim()).filter(Boolean).forEach(x=>{
+          compactSelections.push(x.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim());
+        });
       }
     });
 
-    const selections=uniq([...compactSelections,...selectionLines])
+    const marketDescriptor=/^(?:[A-Z .'-]+\s+)?(?:TEAM\s+)?TOTAL\s+(?:RUNS|POINTS|GOALS)|^(?:RUN\s+LINE|MONEYLINE|SPREAD)$/i;
+    const expandedSelections=lines
+      .filter(looksLikeSelection)
       .filter(x=>!looksLikeEvent(x))
-      .filter(x=>!/\b\d+\s*[- ]?\s*bet\s+parlay\b/i.test(x));
+      .filter(x=>!/\b\d+\s*[- ]?\s*bet\s+parlay\b/i.test(x))
+      .filter(x=>!/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(x))
+      .filter(x=>!marketDescriptor.test(x.trim()))
+      .map(x=>x.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim());
 
+    // Case-insensitive de-duplication after removing leg odds.
+    const seenSelectionKeys=new Set();
+    let selections=[...compactSelections,...expandedSelections].filter(sel=>{
+      const key=sel.toLowerCase().replace(/\s+/g," ").trim();
+      if(!key || seenSelectionKeys.has(key)) return false;
+      seenSelectionKeys.add(key);
+      return true;
+    });
+
+    // A known parlay count is a useful guard against OCR repeating the same
+    // selection in summary + expanded sections.
+    if(out.legs && selections.length>out.legs){
+      selections=selections.slice(0,out.legs);
+    }
+
+    out.selections=selections;
     if(selections.length){
       out.pick=selections.join(" + ");
       out.found.push("selección");
@@ -3106,8 +3212,13 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     return out;
   }
 
+  function appendUniqueNote(parts, value){
+    const clean=String(value||"").trim();
+    if(!clean) return;
+    if(!parts.some(x=>x.toLowerCase()===clean.toLowerCase())) parts.push(clean);
+  }
+
   function applyScannedTicket(data){
-    // Never leave the default NBA when OCR did not actually detect a sport.
     if(data.sport){
       const option=[...$("fSport").options].find(o=>o.value.toLowerCase()===data.sport.toLowerCase());
       $("fSport").value=option ? option.value : "Otro";
@@ -3118,12 +3229,11 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     $("fBook").value=data.book || "";
     $("fEvent").value=data.event || "";
 
-    if(data.pick){
-      $("fPick").value=data.betType && !data.pick.toLowerCase().includes("parlay")
-        ? `${data.betType}: ${data.pick}`
-        : data.pick;
+    // Keep this field short and human-readable.
+    if(data.betType && data.pick && data.pick!==data.betType){
+      $("fPick").value=`${data.betType} · ${data.pick}`;
     }else{
-      $("fPick").value=data.betType || "";
+      $("fPick").value=data.pick || data.betType || "";
     }
 
     if(data.odds!=null) $("fOdds").value=data.odds;
@@ -3131,15 +3241,15 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     if(data.date) $("fDate").value=data.date;
     if(data.time) $("fTime").value=data.time;
 
-    // Keep existing notes, but preserve useful settled-ticket metadata.
-    if(data.payout!=null || data.settledResult){
-      const bits=[];
-      if(data.payout!=null) bits.push(`Payout leído: ${money(data.payout)}`);
-      if(data.settledResult==="win") bits.push("Ticket detectado como pagado/ganador");
-      else if(data.settledResult==="loss") bits.push("Ticket detectado como perdido");
-      else if(data.settledResult==="push") bits.push("Ticket detectado como push/void");
-      if(bits.length) $("fNotes").value=bits.join(" · ");
-    }
+    // Preserve anything the user already wrote and append metadata only once.
+    const notes=$("fNotes").value
+      .split(" · ").map(x=>x.trim()).filter(Boolean);
+    if(data.ticketId) appendUniqueNote(notes,`Ticket ID: ${data.ticketId}`);
+    if(data.payout!=null) appendUniqueNote(notes,`Payout leído: ${money(data.payout)}`);
+    if(data.settledResult==="win") appendUniqueNote(notes,"Ticket detectado como pagado/ganador");
+    else if(data.settledResult==="loss") appendUniqueNote(notes,"Ticket detectado como perdido");
+    else if(data.settledResult==="push") appendUniqueNote(notes,"Ticket detectado como push/void");
+    $("fNotes").value=notes.join(" · ");
 
     updateCalc();
   }
@@ -3153,12 +3263,100 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     };
     push("Sportsbook",data.book);
     push("Tipo",data.betType);
+    push("ID ticket",data.ticketId);
+    if(Array.isArray(data.selections) && data.selections.length){
+      data.selections.forEach((selection,index)=>push(`Selección ${index+1}`,selection));
+    }
     push("Cuota",data.odds!=null ? (data.odds>0?"+":"")+data.odds : null);
     push("Stake",data.stake!=null ? money(data.stake) : null);
     push("Payout",data.payout!=null ? money(data.payout) : null);
     push("Resultado leído",data.settledResult==="win"?"WIN / Pagado":data.settledResult==="loss"?"LOST":data.settledResult==="push"?"PUSH":null);
     detected.innerHTML=chips.join("");
     detected.classList.toggle("show",chips.length>0);
+  }
+
+  function existingBetWithTicketId(ticketId){
+    if(!ticketId) return null;
+    const wanted=String(ticketId).trim().toLowerCase();
+    return state.bets.find(b=>{
+      const match=String(b.notes||"").match(/(?:^|·|\s)Ticket ID:\s*([A-Za-z0-9_-]{6,})/i);
+      return match && match[1].toLowerCase()===wanted;
+    }) || null;
+  }
+
+  function showParsedTicketResult(parsed,text,sourceLabel="Texto pegado"){
+    lastScanMeta=parsed;
+    applyScannedTicket(parsed);
+    renderScanDetected(parsed);
+
+    const result=$("scanResult"), guide=$("scanGuidance"), raw=$("scanRawText");
+    result.classList.remove("warn");
+    guide.classList.remove("show");
+
+    const essential=[parsed.odds!=null,parsed.stake!=null,parsed.event,parsed.pick];
+    const enough=essential.filter(Boolean).length>=4;
+
+    result.classList.add("show");
+    result.classList.toggle("warn",!enough);
+    result.textContent=enough
+      ? "Ticket leído directamente, sin OCR. Revisa los datos y guarda la apuesta."
+      : "Lectura parcial. Completa únicamente los campos que falten.";
+
+    const warnings=[];
+    const duplicate=existingBetWithTicketId(parsed.ticketId);
+    if(duplicate){
+      warnings.push(`Este ID de ticket ya aparece en tu historial. Revisa antes de guardar para evitar duplicarlo.`);
+    }
+    if(parsed.missingTeams){
+      warnings.push(`Detecté ${parsed.betType || "un parlay"}, pero faltan partidos visibles en el texto compartido.`);
+    }
+    if(!parsed.sport){
+      warnings.push("No pude confirmar el deporte desde el texto. Selecciónalo manualmente.");
+    }
+    if(!parsed.book){
+      warnings.push("El texto no identifica la casa de apuestas. Escríbela manualmente si no viene incluida al compartir.");
+    }
+    if(warnings.length){
+      guide.classList.add("show");
+      guide.textContent=warnings.join(" ");
+    }
+
+    raw.textContent=`${sourceLabel}:\n\n${text}`;
+    raw.classList.add("show");
+    toast(duplicate ? "Ticket leído · posible duplicado" : (enough ? "Ticket rellenado sin OCR" : "Texto leído: revisa lo pendiente"));
+  }
+
+  function parsePastedTicket(){
+    const raw=String($("pasteTicketText")?.value||"").trim();
+    if(raw.length<4){
+      toast("Pega primero el texto del ticket");
+      return;
+    }
+    const normalized=normalizeOCR(raw);
+    const parsed=parseTicketText(normalized);
+    showParsedTicketResult(parsed,normalized,"Texto pegado del ticket");
+  }
+
+  async function readTicketClipboard(){
+    $("pasteTicketPanel").classList.add("show");
+    if(!navigator.clipboard?.readText){
+      $("pasteTicketText").focus();
+      toast("Pega el texto manualmente");
+      return;
+    }
+    try{
+      const clip=(await navigator.clipboard.readText()).trim();
+      if(!clip){
+        $("pasteTicketText").focus();
+        toast("El portapapeles está vacío");
+        return;
+      }
+      $("pasteTicketText").value=clip;
+      parsePastedTicket();
+    }catch(_){
+      $("pasteTicketText").focus();
+      toast("Mantén pulsado y pega el texto");
+    }
   }
 
   async function runOCR(source,logger){
@@ -3184,6 +3382,7 @@ html[data-theme="dark"] .metric-track{background:#20252a}
     scanInProgress=true;
     $("scanCameraBtn").disabled=true;
     $("scanGalleryBtn").disabled=true;
+    $("pasteTicketBtn").disabled=true;
 
     const preview=$("ticketPreview"), img=$("ticketPreviewImg"), title=$("scanStatusTitle"),
           status=$("scanStatusText"), bar=$("scanProgressBar"), result=$("scanResult"),
@@ -3291,12 +3490,24 @@ html[data-theme="dark"] .metric-track{background:#20252a}
       scanInProgress=false;
       $("scanCameraBtn").disabled=false;
       $("scanGalleryBtn").disabled=false;
+      $("pasteTicketBtn").disabled=false;
       setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
     }
   }
 
   $("scanCameraBtn").addEventListener("click",()=>$("scanCameraInput").click());
   $("scanGalleryBtn").addEventListener("click",()=>$("scanGalleryInput").click());
+  $("pasteTicketBtn").addEventListener("click",()=>{
+    $("pasteTicketPanel").classList.toggle("show");
+    if($("pasteTicketPanel").classList.contains("show")) readTicketClipboard();
+  });
+  $("pasteClipboardBtn").addEventListener("click",readTicketClipboard);
+  $("parsePastedTicketBtn").addEventListener("click",parsePastedTicket);
+  $("pasteTicketText").addEventListener("paste",()=>{
+    setTimeout(()=>{
+      if($("pasteTicketText").value.trim().length>=4) parsePastedTicket();
+    },0);
+  });
   $("scanCameraInput").addEventListener("change",e=>{
     const file=e.target.files?.[0]; if(file) scanTicketFile(file); e.target.value="";
   });
@@ -3375,6 +3586,14 @@ html[data-theme="dark"] .metric-track{background:#20252a}
 
     if(odds > -100 && odds < 100){
       toast("Usa cuota americana válida, ej. -110 o +150");
+      return;
+    }
+
+    const scannedTicketId=lastScanMeta?.ticketId || null;
+    if(!editingId && scannedTicketId && existingBetWithTicketId(scannedTicketId)){
+      toast("Este ticket ya está registrado");
+      $("scanGuidance").classList.add("show");
+      $("scanGuidance").textContent=`El ID ${scannedTicketId} ya existe en tu historial. No lo guardé otra vez.`;
       return;
     }
 
