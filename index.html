@@ -2495,6 +2495,16 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       date:String(b.date || ""),
       time:String(b.time || ""),
       notes:String(b.notes || ""),
+      ticketId:b.ticketId ? String(b.ticketId) : null,
+      ticketDetails:Array.isArray(b.ticketDetails) ? b.ticketDetails.map((leg,index)=>({
+        selection:String(leg?.selection || ""),
+        market:String(leg?.market || ""),
+        event:String(leg?.event || ""),
+        odds:Number.isFinite(Number(leg?.odds)) ? Number(leg.odds) : null,
+        time:String(leg?.time || ""),
+        index:Number(leg?.index || index+1)
+      })) : [],
+      payout:Number.isFinite(Number(b.payout)) && Number(b.payout) > 0 ? Number(b.payout) : null,
       status:allowed.has(b.status) ? b.status : "pending",
       createdAt:String(b.createdAt || new Date().toISOString()),
       settledAt:b.settledAt ? String(b.settledAt) : null
@@ -2575,8 +2585,17 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     return odds > 0 ? stake * (odds / 100) : stake * (100 / Math.abs(odds));
   }
 
+  function ticketProfit(b){
+    const stake=Number(b?.stake)||0;
+    const payout=Number(b?.payout);
+    if(Number.isFinite(payout) && payout > 0 && payout >= stake){
+      return payout - stake;
+    }
+    return americanProfit(stake,b?.odds);
+  }
+
   function betDelta(b){
-    if(b.status === "win") return americanProfit(b.stake, b.odds);
+    if(b.status === "win") return ticketProfit(b);
     if(b.status === "loss") return -Number(b.stake || 0);
     return 0;
   }
@@ -2682,8 +2701,31 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     return {ticketId,legs,extra,raw};
   }
 
-  function renderBetCardNotes(notes){
-    const data=parseBetCardNotes(notes);
+  function renderBetCardNotes(bet){
+    const notes=String(bet?.notes||"");
+    const parsed=parseBetCardNotes(notes);
+    const structured=Array.isArray(bet?.ticketDetails) ? bet.ticketDetails : [];
+
+    const data=structured.length
+      ? {
+          ticketId:bet?.ticketId || parsed?.ticketId || "",
+          legs:structured.map((leg,index)=>({
+            number:Number(leg?.index)||index+1,
+            event:String(leg?.event||""),
+            detail:[
+              String(leg?.selection||""),
+              String(leg?.market||""),
+              Number.isFinite(Number(leg?.odds))
+                ? `${Number(leg.odds)>0?"+":""}${Number(leg.odds)}`
+                : "",
+              String(leg?.time||"")
+            ].filter(Boolean).join(" · ")
+          })),
+          extra:parsed?.extra || [],
+          raw:notes
+        }
+      : parsed;
+
     if(!data) return "";
 
     const legLabel=data.legs.length
@@ -2729,7 +2771,10 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
   }
 
   function betCard(b){
-    const potential = americanProfit(b.stake, b.odds);
+    const potential = ticketProfit(b);
+    const exactPayout = Number.isFinite(Number(b.payout)) && Number(b.payout) > 0
+      ? Number(b.payout)
+      : Number(b.stake || 0) + potential;
     const result = betDelta(b);
     const statusLabel = {pending:"PENDIENTE",win:"WIN",loss:"LOST",push:"PUSH"}[b.status] || "PENDIENTE";
     return `
@@ -2749,7 +2794,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
           <div class="num">
             <span>${b.status === "pending" ? "Payout" : "Resultado"}</span>
             <strong class="${result > 0 ? "green" : result < 0 ? "red" : ""}">
-              ${b.status === "pending" ? money(Number(b.stake) + potential) : (result > 0 ? "+" : "") + money(result)}
+              ${b.status === "pending" ? money(exactPayout) : (result > 0 ? "+" : "") + money(result)}
             </strong>
           </div>
         </div>
@@ -2767,7 +2812,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
           ${cardFooterDate(b) ? `<div class="settled-date">${cardFooterDate(b)}</div>` : ""}
         </div>
 
-        ${renderBetCardNotes(b.notes)}
+        ${renderBetCardNotes(b)}
       </article>
     `;
   }
@@ -3218,11 +3263,32 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     const five = recommendedStake();
     const stake = Number($("fStake").value) || 0;
     const odds = Number($("fOdds").value) || 0;
-    const potential = americanProfit(stake,odds);
+
+    const editingBet = editingId ? state.bets.find(x=>x.id===editingId) : null;
+    const scanStake=Number(lastScanMeta?.stake);
+    const scanOdds=Number(lastScanMeta?.odds);
+    const scanPayout=Number(lastScanMeta?.payout);
+    const editPayout=Number(editingBet?.payout);
+
+    const exactFromScan =
+      Number.isFinite(scanPayout) && scanPayout>0 &&
+      Number.isFinite(scanStake) && Math.abs(scanStake-stake)<0.005 &&
+      Number.isFinite(scanOdds) && scanOdds===odds;
+
+    const exactFromEdit =
+      !lastScanMeta &&
+      Number.isFinite(editPayout) && editPayout>0 &&
+      Math.abs(Number(editingBet?.stake||0)-stake)<0.005 &&
+      Number(editingBet?.odds)===odds;
+
+    const exactPayout = exactFromScan ? scanPayout : (exactFromEdit ? editPayout : null);
+    const potential = exactPayout!=null
+      ? Math.max(0,exactPayout-stake)
+      : americanProfit(stake,odds);
 
     $("calcFive").textContent = money(five);
     $("calcProfit").textContent = money(potential);
-    $("calcPayout").textContent = money(stake + potential);
+    $("calcPayout").textContent = money(exactPayout!=null ? exactPayout : stake + potential);
   }
 
   function toast(msg){
@@ -3564,35 +3630,60 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       out.pick=out.betType;
     }
 
-    // Structured per-leg details for Notes.
-    // Typical sportsbook order: Selection -> Market -> Event -> Time.
+    // Structured per-leg details for Notes/card.
+    // Parse each expanded leg as its own FORWARD-ONLY block:
+    // Selection -> Market -> Event -> Time. Never borrow the previous event.
     const isMarketDetailLine=line=>{
       const v=String(line||"").trim();
       if(!v || badTicketLine(v) || looksLikeEvent(v)) return false;
-      return /^(?:(?:1ST|2ND|3RD|4TH|FIRST|SECOND)\s+(?:INNING|HALF|QUARTER|PERIOD)\s+)?(?:TEAM\s+)?TOTAL\s+(?:RUNS|POINTS|GOALS)|^(?:RUN\s+LINE|PUCK\s+LINE|MONEYLINE|SPREAD|TOTAL)$/i.test(v);
+      return /^(?:(?:1ST|2ND|3RD|4TH|FIRST|SECOND)\s+(?:INNING|HALF|QUARTER|PERIOD)\s+)?(?:[A-Z0-9 .&'/-]+\s+)?(?:TEAM\s+)?TOTAL\s+(?:RUNS|POINTS|GOALS)|^(?:RUN\s+LINE|PUCK\s+LINE|MONEYLINE|SPREAD|TOTAL)$/i.test(v);
     };
 
-    const cleanLegSelection=line=>String(line||"")
-      .replace(/\s+[+-]\s*\d{3,4}\s*$/,"")
-      .replace(/\s+/g," ")
-      .trim();
+    const legSelectionInfo=line=>{
+      const v=String(line||"").replace(/\s+/g," ").trim();
+      if(!v || badTicketLine(v) || looksLikeEvent(v)) return null;
+      if(/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(v)) return null;
 
-    const selectionDetailCandidates=[];
+      let m=v.match(/^((?:over|under)\s*\d+(?:\.\d+)?)(?:\s+([+-]\s*\d{3,4}))?$/i);
+      if(m){
+        return {
+          selection:m[1].replace(/\s+/g," ").trim(),
+          odds:m[2] ? cleanOdds(m[2]) : null
+        };
+      }
+
+      if(isMarketDetailLine(v)) return null;
+      if(looksLikeSelection(v)){
+        const oddsMatch=v.match(/([+-]\s*\d{3,4})\s*$/);
+        return {
+          selection:v.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim(),
+          odds:oddsMatch ? cleanOdds(oddsMatch[1]) : null
+        };
+      }
+      return null;
+    };
+
+    const legTimeText=line=>{
+      const v=String(line||"").trim();
+      if(!v) return "";
+      if(/\b(?:today|tomorrow|hoy|mañana)\b.*\b\d{1,2}:\d{2}\s*(?:am|pm)?\b/i.test(v)) return v;
+      if(/^\d{1,2}:\d{2}\s*(?:am|pm)?(?:\s+[A-Z]{2,5})?$/i.test(v)) return v;
+      return "";
+    };
+
+    const expandedLegRows=[];
     for(let i=0;i<lines.length;i++){
-      const line=lines[i];
-      if(isMarketDetailLine(line)) continue;
-      if(!looksLikeSelection(line)) continue;
-      if(looksLikeEvent(line) || badTicketLine(line)) continue;
-      if(/\b\d+\s*[- ]?\s*bet\s+parlay\b/i.test(line)) continue;
-      if(/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(line)) continue;
+      const info=legSelectionInfo(lines[i]);
+      if(info) expandedLegRows.push({lineIndex:i,...info});
+    }
 
-      const selection=cleanLegSelection(line);
-      if(!selection) continue;
+    let selectionDetails=[];
+    for(let r=0;r<expandedLegRows.length;r++){
+      const row=expandedLegRows[r];
+      const nextIndex=r+1<expandedLegRows.length ? expandedLegRows[r+1].lineIndex : lines.length;
+      let market="", event="", time="";
 
-      let market="";
-      let event="";
-
-      for(let j=i+1;j<Math.min(lines.length,i+6);j++){
+      for(let j=row.lineIndex+1;j<nextIndex;j++){
         const candidate=lines[j];
         if(!market && isMarketDetailLine(candidate)){
           market=candidate.trim();
@@ -3600,29 +3691,31 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
         }
         if(!event && looksLikeEvent(candidate)){
           event=candidate.trim();
-          break;
+          continue;
         }
-        if(j>i+1 && looksLikeSelection(candidate) && !isMarketDetailLine(candidate)) break;
-      }
-
-      if(!event){
-        for(let j=i-1;j>=Math.max(0,i-4);j--){
-          if(looksLikeEvent(lines[j])){
-            event=lines[j].trim();
-            break;
-          }
+        if(!time){
+          const t=legTimeText(candidate);
+          if(t) time=t;
         }
       }
 
-      selectionDetailCandidates.push({selection,market,event,sourceIndex:i});
+      selectionDetails.push({
+        selection:row.selection,
+        market,
+        event,
+        odds:row.odds,
+        time,
+        index:selectionDetails.length+1
+      });
     }
 
     const detailSeen=new Set();
-    let selectionDetails=selectionDetailCandidates.filter(item=>{
+    selectionDetails=selectionDetails.filter(item=>{
       const key=[
         item.selection.toLowerCase(),
         item.market.toLowerCase(),
-        item.event.toLowerCase()
+        item.event.toLowerCase(),
+        item.odds ?? ""
       ].join("|");
       if(detailSeen.has(key)) return false;
       detailSeen.add(key);
@@ -3630,20 +3723,25 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     });
 
     if(out.legs && selectionDetails.length>out.legs){
-      selectionDetails=selectionDetails.slice(0,out.legs);
+      const withEvent=selectionDetails.filter(x=>x.event);
+      selectionDetails=(withEvent.length>=out.legs ? withEvent : selectionDetails).slice(0,out.legs);
     }
 
     selectionDetails=selectionDetails.map((item,index)=>({
+      ...item,
       selection:item.selection || selections[index] || "",
-      market:item.market || "",
-      event:item.event || eventLines[index] || ""
+      event:item.event || eventLines[index] || "",
+      index:index+1
     }));
 
     if(!selectionDetails.length && selections.length){
       selectionDetails=selections.map((selection,index)=>({
         selection,
         market:"",
-        event:eventLines[index] || ""
+        event:eventLines[index] || "",
+        odds:null,
+        time:"",
+        index:index+1
       }));
     }
 
@@ -3687,19 +3785,21 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     if(data.date) $("fDate").value=data.date;
     if(data.time) $("fTime").value=data.time;
 
-    // Keep useful ticket identity + per-leg detail in Notes.
-    // Do NOT duplicate payout here.
-    const existingLines=String($("fNotes").value||"")
-      .split(/\r?\n|\s+·\s+/)
+    // Keep ticket identity + exact per-leg detail in Notes.
+    // Do not duplicate payout here.
+    // Remove complete old scanner-generated blocks so rescans cannot mix legs.
+    const existingBlocks=String($("fNotes").value||"")
+      .split(/\n\s*\n/)
       .map(x=>x.trim())
       .filter(Boolean);
 
-    const manualLines=existingLines.filter(line=>
-      !/^Ticket ID:/i.test(line) &&
-      !/^Payout leído:/i.test(line) &&
-      !/^Selección\s+\d+:/i.test(line) &&
-      !/^Ticket detectado como /i.test(line)
-    );
+    const manualBlocks=existingBlocks.filter(block=>{
+      const first=(block.split(/\r?\n/)[0]||"").trim();
+      return !/^Ticket ID:/i.test(first) &&
+             !/^Selección\s+\d+:/i.test(first) &&
+             !/^Ticket detectado como /i.test(first) &&
+             !/^Payout leído:/i.test(first);
+    });
 
     const generated=[];
     if(data.ticketId) generated.push(`Ticket ID: ${data.ticketId}`);
@@ -3710,12 +3810,17 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
         const event=String(leg?.event||"").trim();
         const selection=String(leg?.selection||data.selections?.[index]||"").trim();
         const market=String(leg?.market||"").trim();
-        const parts=[selection,market].filter(Boolean);
+        const legOdds=Number.isFinite(Number(leg?.odds))
+          ? `${Number(leg.odds)>0?"+":""}${Number(leg.odds)}`
+          : "";
+        const time=String(leg?.time||"").trim();
+        const detailParts=[selection,market,legOdds].filter(Boolean);
 
         generated.push(
           `Selección ${index+1}:` +
           (event ? `\n${event}` : "") +
-          (parts.length ? `\n${parts.join(" · ")}` : "")
+          (detailParts.length ? `\n${detailParts.join(" · ")}` : "") +
+          (time ? `\n${time}` : "")
         );
       });
     }else if(Array.isArray(data.selections)){
@@ -3728,7 +3833,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     else if(data.settledResult==="loss") generated.push("Ticket detectado como perdido");
     else if(data.settledResult==="push") generated.push("Ticket detectado como push/void");
 
-    $("fNotes").value=[...manualLines,...generated].filter(Boolean).join("\n\n");
+    $("fNotes").value=[...manualBlocks,...generated].filter(Boolean).join("\n\n");
 
     updateCalc();
   }
@@ -3766,6 +3871,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     if(!ticketId) return null;
     const wanted=String(ticketId).trim().toLowerCase();
     return state.bets.find(b=>{
+      if(b.ticketId && String(b.ticketId).trim().toLowerCase()===wanted) return true;
       const match=String(b.notes||"").match(/(?:^|·|\s)Ticket ID:\s*([A-Za-z0-9_-]{6,})/i);
       return match && match[1].toLowerCase()===wanted;
     }) || null;
@@ -4084,6 +4190,19 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       return;
     }
 
+    const editingBet = editingId ? state.bets.find(x => x.id === editingId) : null;
+    const scannedPayout = Number(lastScanMeta?.payout);
+    const scannerDetails = Array.isArray(lastScanMeta?.selectionDetails)
+      ? lastScanMeta.selectionDetails.map((leg,index)=>({
+          selection:String(leg?.selection || ""),
+          market:String(leg?.market || ""),
+          event:String(leg?.event || ""),
+          odds:Number.isFinite(Number(leg?.odds)) ? Number(leg.odds) : null,
+          time:String(leg?.time || ""),
+          index:index+1
+        }))
+      : [];
+
     const payload = {
       sport:$("fSport").value,
       book:$("fBook").value.trim(),
@@ -4093,11 +4212,16 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       stake,
       date:$("fDate").value,
       time:$("fTime").value,
-      notes:$("fNotes").value.trim()
+      notes:$("fNotes").value.trim(),
+      ticketId:lastScanMeta?.ticketId || editingBet?.ticketId || null,
+      ticketDetails:scannerDetails.length ? scannerDetails : (editingBet?.ticketDetails || []),
+      payout:Number.isFinite(scannedPayout) && scannedPayout > 0
+        ? scannedPayout
+        : (Number.isFinite(Number(editingBet?.payout)) && Number(editingBet.payout)>0 ? Number(editingBet.payout) : null)
     };
 
     if(editingId){
-      const b = state.bets.find(x => x.id === editingId);
+      const b = editingBet;
       if(b && b.status === "pending") Object.assign(b,payload);
     }else{
       const newBet = {
