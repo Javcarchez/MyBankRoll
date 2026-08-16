@@ -2439,7 +2439,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       <label class="field">Notas<textarea id="fNotes" placeholder="Razón, contexto, lesión, modelo, etc."></textarea></label>
 
       <div class="calc-box glass">
-        <div class="calc-item"><span>Stake <b id="calcRiskLabel">5%</b></span><strong id="calcFive">$0.00</strong></div>
+        <div class="calc-item"><span>Stake recomendado <b id="calcRiskLabel">5%</b></span><strong id="calcFive">$0.00</strong></div>
         <div class="calc-item"><span>Ganancia si WIN</span><strong id="calcProfit">$0.00</strong></div>
         <div class="calc-item"><span>Payout total</span><strong id="calcPayout">$0.00</strong></div>
       </div>
@@ -3330,6 +3330,161 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     ["Fanatics",/fanatics/i]
   ];
 
+
+  /*
+   * Generic sportsbook market intelligence.
+   * This is intentionally market-based, not sportsbook-specific: OCR/direct text
+   * from any supported book is normalized into Selection + Market + Event.
+   * Sport inference only happens when a market is strongly sport-specific.
+   */
+  const BET_MARKETS = [
+    // Soccer
+    {label:"Shots on Target",re:/\bshots?\s+on\s+target\b/i,sport:"Soccer"},
+    {label:"Both Teams to Score",re:/\b(?:both\s+teams\s+to\s+score|btts)\b/i,sport:"Soccer"},
+    {label:"Double Chance",re:/\bdouble\s+chance\b/i,sport:"Soccer"},
+    {label:"Draw No Bet",re:/\b(?:draw\s+no\s+bet|dnb)\b/i,sport:"Soccer"},
+    {label:"Corners",re:/\b(?:total\s+)?corners?\b/i,sport:"Soccer"},
+    {label:"Cards",re:/\b(?:total\s+)?cards?\b/i,sport:"Soccer"},
+    {label:"Goal Scorer",re:/\b(?:anytime|first|last)?\s*goal\s*scorer\b/i,sport:"Soccer"},
+
+    // Baseball
+    {label:"1st Inning Total Runs",re:/\b(?:1st|first)\s+inning\s+(?:team\s+)?total\s+runs\b/i,sport:"MLB"},
+    {label:"Total Runs",re:/\b(?:team\s+)?total\s+runs\b/i,sport:"MLB"},
+    {label:"Run Line",re:/\brun\s+line\b/i,sport:"MLB"},
+    {label:"Strikeouts",re:/\bstrikeouts?\b|\bks\b/i,sport:"MLB"},
+    {label:"Total Bases",re:/\btotal\s+bases\b/i,sport:"MLB"},
+    {label:"Hits",re:/\bhits?\b/i,sport:"MLB"},
+    {label:"RBIs",re:/\brbis?\b|\bruns?\s+batted\s+in\b/i,sport:"MLB"},
+    {label:"Home Runs",re:/\bhome\s+runs?\b/i,sport:"MLB"},
+    {label:"Earned Runs",re:/\bearned\s+runs?\b/i,sport:"MLB"},
+    {label:"Outs Recorded",re:/\bouts?\s+recorded\b/i,sport:"MLB"},
+
+    // American football
+    {label:"Passing Yards",re:/\bpassing\s+yards?\b/i,sport:"NFL"},
+    {label:"Rushing Yards",re:/\brushing\s+yards?\b/i,sport:"NFL"},
+    {label:"Receiving Yards",re:/\breceiving\s+yards?\b/i,sport:"NFL"},
+    {label:"Receptions",re:/\breceptions?\b/i,sport:"NFL"},
+    {label:"Pass Completions",re:/\b(?:pass(?:ing)?\s+)?completions?\b/i,sport:"NFL"},
+    {label:"Passing Touchdowns",re:/\bpassing\s+(?:touchdowns?|tds?)\b/i,sport:"NFL"},
+    {label:"Rushing Touchdowns",re:/\brushing\s+(?:touchdowns?|tds?)\b/i,sport:"NFL"},
+    {label:"Receiving Touchdowns",re:/\breceiving\s+(?:touchdowns?|tds?)\b/i,sport:"NFL"},
+    {label:"Anytime Touchdown",re:/\banytime\s+(?:touchdown|td)(?:\s+scorer)?\b/i,sport:"NFL"},
+
+    // Hockey
+    {label:"Shots on Goal",re:/\bshots?\s+on\s+goal\b/i,sport:"NHL"},
+    {label:"Goalie Saves",re:/\b(?:goalie\s+)?saves?\b/i,sport:"NHL"},
+    {label:"Puck Line",re:/\bpuck\s+line\b/i,sport:"NHL"},
+
+    // Basketball (market recognized, league is NOT guessed between NBA/NCAAB)
+    {label:"Points + Rebounds + Assists",re:/\b(?:points?\s*\+\s*rebounds?\s*\+\s*assists?|pra)\b/i},
+    {label:"Points + Rebounds",re:/\bpoints?\s*\+\s*rebounds?\b/i},
+    {label:"Points + Assists",re:/\bpoints?\s*\+\s*assists?\b/i},
+    {label:"Rebounds + Assists",re:/\brebounds?\s*\+\s*assists?\b/i},
+    {label:"3-Pointers Made",re:/\b(?:3|three)[ -]?(?:pointers?|pt)\s+made\b|\b3pm\b/i},
+    {label:"Double Double",re:/\bdouble[ -]?double\b/i},
+    {label:"Triple Double",re:/\btriple[ -]?double\b/i},
+    {label:"Rebounds",re:/\brebounds?\b/i},
+    {label:"Assists",re:/\bassists?\b/i},
+    {label:"Steals",re:/\bsteals?\b/i},
+    {label:"Blocks",re:/\bblocks?\b/i},
+
+    // Tennis
+    {label:"Aces",re:/\baces?\b/i},
+    {label:"Double Faults",re:/\bdouble\s+faults?\b/i},
+    {label:"Games Won",re:/\bgames?\s+won\b/i},
+
+    // Combat sports
+    {label:"Significant Strikes",re:/\bsignificant\s+strikes?\b/i,sport:"UFC"},
+    {label:"Takedowns",re:/\btakedowns?\b/i,sport:"UFC"},
+    {label:"Fight Goes the Distance",re:/\bfight\s+(?:goes|to\s+go)\s+(?:the\s+)?distance\b/i,sport:"UFC"},
+    {label:"Method of Victory",re:/\bmethod\s+of\s+victory\b/i,sport:"UFC"},
+
+    // Generic team/game/player markets — recognized but sport is not guessed.
+    {label:"Team Total Points",re:/\b(?:team\s+)?total\s+points\b/i},
+    {label:"Team Total Goals",re:/\b(?:team\s+)?total\s+goals\b/i},
+    {label:"Moneyline",re:/\b(?:money\s*line|moneyline|ml)\b/i},
+    {label:"Spread",re:/\bspread\b/i},
+    {label:"Asian Handicap",re:/\basian\s+handicap\b/i},
+    {label:"Handicap",re:/\bhandicap\b/i},
+    {label:"First Half Total",re:/\b(?:1st|first)\s+half\s+total\b/i},
+    {label:"Second Half Total",re:/\b(?:2nd|second)\s+half\s+total\b/i},
+    {label:"Quarter Total",re:/\b(?:1st|2nd|3rd|4th|first|second|third|fourth)\s+quarter\s+total\b/i},
+    {label:"Period Total",re:/\b(?:1st|2nd|3rd|first|second|third)\s+period\s+total\b/i},
+    {label:"Points",re:/\bpoints?\b/i},
+    {label:"Goals",re:/\bgoals?\b/i},
+    {label:"Total",re:/\btotal\b/i}
+  ];
+
+  function cleanMarketSubject(v){
+    return String(v||"")
+      .replace(/\s+/g," ")
+      .trim()
+      .replace(/\s*[|·•]+\s*$/g,"")
+      .replace(/\s*[-–—:]+\s*$/g,"")
+      .replace(/^(?:player|team)\s*[:\-]\s*/i,"")
+      .trim();
+  }
+
+  function marketInfoFromLine(line){
+    const v=String(line||"").replace(/\s+/g," ").trim();
+    if(!v || badTicketLine(v) || looksLikeEvent(v)) return null;
+    for(const rule of BET_MARKETS){
+      const m=v.match(rule.re);
+      if(!m) continue;
+      const before=cleanMarketSubject(v.slice(0,m.index));
+      const after=cleanMarketSubject(v.slice((m.index||0)+m[0].length));
+      // Subject is usually the player/team before the market label. Text after a
+      // market is kept only when it is not an odds/line fragment.
+      const subject=before && !/^(?:over|under|yes|no|draw)$/i.test(before) ? before : "";
+      return {
+        label:rule.label,
+        subject,
+        sport:rule.sport||null,
+        raw:v,
+        trailing:after
+      };
+    }
+    return null;
+  }
+
+  function readableMarket(info){
+    if(!info) return "";
+    return info.subject ? `${info.subject} · ${info.label}` : info.label;
+  }
+
+  function selectionCoreFromLine(line){
+    const v=String(line||"").replace(/\s+/g," ").trim();
+    if(!v) return null;
+    const noOdds=v.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim();
+
+    let m=noOdds.match(/\b(over|under)\s*(\d+(?:\.\d+)?)\b/i);
+    if(m) return `${m[1][0].toUpperCase()+m[1].slice(1).toLowerCase()} ${m[2]}`;
+
+    m=noOdds.match(/\b(\d+(?:\.\d+)?)\s*\+\b/);
+    if(m) return `${m[1]}+`;
+
+    if(/^(?:yes|no|draw|tie)$/i.test(noOdds)) return noOdds[0].toUpperCase()+noOdds.slice(1).toLowerCase();
+
+    const ml=noOdds.match(/^(.+?)\s+(?:money\s*line|moneyline|ml)$/i);
+    if(ml) return cleanMarketSubject(ml[1]);
+
+    return null;
+  }
+
+  function buildReadablePick(detail){
+    if(!detail) return "";
+    const selection=String(detail.selection||"").trim();
+    const info=marketInfoFromLine(detail.market||"");
+    if(!info) return selection;
+
+    // Avoid repeating text already present in the selection.
+    const sKey=selection.toLowerCase();
+    const marketAlready=sKey.includes(info.label.toLowerCase());
+    const subjectAlready=info.subject && sKey.includes(info.subject.toLowerCase());
+    const core=marketAlready ? selection : `${selection} ${info.label}`.trim();
+    return info.subject && !subjectAlready ? `${info.subject} · ${core}` : core;
+  }
+
   let lastScanMeta = null;
 
   function resetScannerUI(){
@@ -3395,17 +3550,33 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
   function looksLikeEvent(line){
     if(!line || badTicketLine(line) || /\$/.test(line)) return false;
     const clean=String(line).replace(/\s+/g," ").trim();
-    // Supports: Cardinals @ Cubs, Lakers vs Celtics, Orioles at Rays
-    if(/[A-Za-z]{2,}.+@.+[A-Za-z]{2,}/.test(clean)) return true;
-    if(/[A-Za-z]{2,}.+\b(?:vs\.?|versus|at)\b.+[A-Za-z]{2,}/i.test(clean)) return true;
+    // Team sports, tennis and combat sports commonly use @ / vs / at / v.
+    if(/[A-Za-zÀ-ÿ]{2,}.+@.+[A-Za-zÀ-ÿ]{2,}/.test(clean)) return true;
+    if(/[A-Za-zÀ-ÿ]{2,}.+\b(?:vs\.?|versus|at)\b.+[A-Za-zÀ-ÿ]{2,}/i.test(clean)) return true;
+    if(/[A-Za-zÀ-ÿ]{2,}.+\s+v\.?\s+.+[A-Za-zÀ-ÿ]{2,}/i.test(clean)) return true;
     return false;
   }
 
   function looksLikeSelection(line){
     if(!line || badTicketLine(line)) return false;
     if(/\$\s*\d/.test(line)) return false;
-    return /\b(?:over|under|moneyline|money line|\bML\b|spread|handicap|total|team total|player prop|points|rebounds|assists|goals|sets|touchdowns|first half|1st half)\b/i.test(line)
-      || /[A-Za-z]{2,}.*[+-]\d+(?:\.\d+)?/.test(line);
+    const v=String(line).replace(/\s+/g," ").trim();
+    if(looksLikeEvent(v)) return false;
+
+    // Directional totals/props and ladders: Over 1.5, Under 22.5, 2+, 3+.
+    if(/\b(?:over|under)\s*\d+(?:\.\d+)?\b/i.test(v)) return true;
+    if(/\b\d+(?:\.\d+)?\s*\+\b/.test(v) && marketInfoFromLine(v)) return true;
+
+    // Explicit market selections: Lakers ML, Draw, Yes/No, player + odds, spreads.
+    if(/\b(?:money\s*line|moneyline|\bML\b|spread|handicap|draw\s+no\s+bet|double\s+chance|btts|anytime)\b/i.test(v)) return true;
+    if(/^(?:yes|no|draw|tie)(?:\s+[+-]\s*\d{3,4})?$/i.test(v)) return true;
+    if(/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .&'’/-]{1,60}\s+[+-]\d+(?:\.\d+)?(?:\s+[+-]\d{3,4})?$/.test(v)) return true;
+    if(/[A-Za-zÀ-ÿ]{2,}.*[+-]\s*\d{3,4}\s*$/.test(v)) return true;
+
+    // A line containing a known market is a selection only when it also carries
+    // an actual choice/threshold. Descriptor-only lines stay descriptors.
+    const market=marketInfoFromLine(v);
+    return !!market && (!!selectionCoreFromLine(v) || /\b(?:yes|no|draw|over|under)\b/i.test(v));
   }
 
   async function preprocessTicketImage(file){
@@ -3471,11 +3642,14 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       if(re.test(text)){out.book=book;out.found.push("sportsbook");break;}
     }
 
-    // Conservative baseball inference for sportsbook ticket text that omits "MLB".
-    // "TOTAL RUNS" / "RUN LINE" are explicit baseball-market labels in the supported model.
-    if(!out.sport && /\b(?:team\s+)?total\s+runs\b|\brun\s+line\b/i.test(text)){
-      out.sport="MLB";
-      out.found.push("deporte");
+    // Conservative sport inference from strongly sport-specific market language.
+    // Generic words such as Points / Assists / Goals never force a league.
+    if(!out.sport){
+      const marketSports=uniq(lines.map(marketInfoFromLine).filter(Boolean).map(x=>x.sport).filter(Boolean));
+      if(marketSports.length===1){
+        out.sport=marketSports[0];
+        out.found.push("deporte");
+      }
     }
 
     // Ticket / wager ID (identification + duplicate warning; it does not encode the bet).
@@ -3485,17 +3659,26 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       out.found.push("id");
     }
 
-    // Bet type / parlay count
-    const parlay=text.match(/\b(\d+)\s*[- ]?\s*bet\s+parlay\b/i);
-    if(parlay){
-      out.legs=Number(parlay[1]);
-      out.betType=`Parlay de ${out.legs} selecciones`;
+    // Bet type / multi-leg structure across common sportsbook wording.
+    const legCount=text.match(/\b(\d+)\s*[- ]?\s*(?:bet|leg|pick|selection)\s+(?:same\s+game\s+)?parlay\b/i)
+      || text.match(/\b(?:parlay|accumulator|acca)\s*(?:of|de)?\s*(\d+)\b/i);
+    if(legCount) out.legs=Number(legCount[1]);
+
+    if(/\b(?:same\s+game\s+parlay|sgp|bet\s+builder)\b/i.test(text)){
+      out.betType=out.legs ? `Same Game Parlay de ${out.legs} selecciones` : "Same Game Parlay";
       out.found.push("tipo");
-    }else if(/\bparlay\b/i.test(text)){
-      out.betType="Parlay";
+    }else if(/\b(?:parlay|accumulator|acca|combo)\b/i.test(text)){
+      out.betType=out.legs ? `Parlay de ${out.legs} selecciones` : "Parlay";
       out.found.push("tipo");
-    }else if(/\bstraight\b|\bsingle\b/i.test(text)){
+    }else if(/\bround\s+robin\b/i.test(text)){
+      out.betType="Round Robin";
+      out.found.push("tipo");
+    }else if(/\bteaser\b/i.test(text)){
+      out.betType="Teaser";
+      out.found.push("tipo");
+    }else if(/\bstraight\b|\bsingle\b|\bapuesta\s+simple\b/i.test(text)){
       out.betType="Apuesta simple";
+      out.found.push("tipo");
     }
 
     // Settled state (informational only; we do not silently settle the bet)
@@ -3657,14 +3840,19 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       }
     });
 
-    const marketDescriptor=/^(?:[A-Z .'-]+\s+)?(?:TEAM\s+)?TOTAL\s+(?:RUNS|POINTS|GOALS)|^(?:RUN\s+LINE|MONEYLINE|SPREAD)$/i;
     const expandedSelections=lines
       .filter(looksLikeSelection)
       .filter(x=>!looksLikeEvent(x))
-      .filter(x=>!/\b\d+\s*[- ]?\s*bet\s+parlay\b/i.test(x))
+      .filter(x=>!/\b\d+\s*[- ]?\s*(?:bet|leg|pick|selection)\s+(?:same\s+game\s+)?parlay\b/i.test(x))
       .filter(x=>!/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(x))
-      .filter(x=>!marketDescriptor.test(x.trim()))
-      .map(x=>x.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim());
+      .filter(x=>{
+        const info=marketInfoFromLine(x);
+        return !info || !!selectionCoreFromLine(x);
+      })
+      .map(x=>{
+        const core=selectionCoreFromLine(x);
+        return core || x.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim();
+      });
 
     // Case-insensitive de-duplication after removing leg odds.
     const seenSelectionKeys=new Set();
@@ -3692,31 +3880,41 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     // Structured per-leg details for Notes/card.
     // Parse each expanded leg as its own FORWARD-ONLY block:
     // Selection -> Market -> Event -> Time. Never borrow the previous event.
-    const isMarketDetailLine=line=>{
-      const v=String(line||"").trim();
-      if(!v || badTicketLine(v) || looksLikeEvent(v)) return false;
-      return /^(?:(?:1ST|2ND|3RD|4TH|FIRST|SECOND)\s+(?:INNING|HALF|QUARTER|PERIOD)\s+)?(?:[A-Z0-9 .&'/-]+\s+)?(?:TEAM\s+)?TOTAL\s+(?:RUNS|POINTS|GOALS)|^(?:RUN\s+LINE|PUCK\s+LINE|MONEYLINE|SPREAD|TOTAL)$/i.test(v);
-    };
+    const isMarketDetailLine=line=>!!marketInfoFromLine(line);
 
     const legSelectionInfo=line=>{
       const v=String(line||"").replace(/\s+/g," ").trim();
       if(!v || badTicketLine(v) || looksLikeEvent(v)) return null;
       if(/(?:over|under)\s*\d+(?:\.\d+)?(?:\s*,\s*(?:over|under)\s*\d+(?:\.\d+)?)+/i.test(v)) return null;
 
-      let m=v.match(/^((?:over|under)\s*\d+(?:\.\d+)?)(?:\s+([+-]\s*\d{3,4}))?$/i);
-      if(m){
-        return {
-          selection:m[1].replace(/\s+/g," ").trim(),
-          odds:m[2] ? cleanOdds(m[2]) : null
-        };
+      const oddsMatch=v.match(/([+-]\s*\d{3,4})\s*$/);
+      const odds=oddsMatch ? cleanOdds(oddsMatch[1]) : null;
+      const marketInfo=marketInfoFromLine(v);
+      const core=selectionCoreFromLine(v);
+
+      // Inline player/team prop: "Désiré Doué - Over 1.5 Shots on Target +200".
+      if(core){
+        let inlineMarket="";
+        if(marketInfo){
+          inlineMarket=marketInfo.raw
+            .replace(/\b(?:over|under)\s*\d+(?:\.\d+)?\b/i,"")
+            .replace(/\b\d+(?:\.\d+)?\s*\+\b/,"")
+            .replace(/\s+[+-]\s*\d{3,4}\s*$/,"")
+            .replace(/\s{2,}/g," ")
+            .replace(/\s*[-–—]\s*[-–—]\s*/g," - ")
+            .trim();
+        }
+        return {selection:core,odds,inlineMarket};
       }
 
-      if(isMarketDetailLine(v)) return null;
+      // Descriptor-only lines are not selections.
+      if(marketInfo) return null;
+
       if(looksLikeSelection(v)){
-        const oddsMatch=v.match(/([+-]\s*\d{3,4})\s*$/);
         return {
           selection:v.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim(),
-          odds:oddsMatch ? cleanOdds(oddsMatch[1]) : null
+          odds,
+          inlineMarket:""
         };
       }
       return null;
@@ -3740,7 +3938,21 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     for(let r=0;r<expandedLegRows.length;r++){
       const row=expandedLegRows[r];
       const nextIndex=r+1<expandedLegRows.length ? expandedLegRows[r+1].lineIndex : lines.length;
-      let market="", event="", time="";
+      let market=String(row.inlineMarket||"").trim(), event="", time="";
+
+      // Some books put the market header immediately ABOVE the selection.
+      // Only borrow a descriptor from the local block; events remain forward-only.
+      if(!market){
+        const prevSelectionIndex=r>0 ? expandedLegRows[r-1].lineIndex : -1;
+        for(let j=row.lineIndex-1;j>prevSelectionIndex && j>=Math.max(0,row.lineIndex-2);j--){
+          const candidate=lines[j];
+          if(looksLikeEvent(candidate) || legTimeText(candidate) || badTicketLine(candidate)) break;
+          if(isMarketDetailLine(candidate)){
+            market=candidate.trim();
+            break;
+          }
+        }
+      }
 
       for(let j=row.lineIndex+1;j<nextIndex;j++){
         const candidate=lines[j];
@@ -3806,6 +4018,31 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
 
     out.selectionDetails=selectionDetails;
 
+    // A straight/player/team prop should not collapse to just "Over 1.5".
+    // Use the structured market to produce a human-readable pick while keeping
+    // multi-leg parlay summaries concise and backward-compatible.
+    if(!out.legs && selectionDetails.length===1){
+      const enriched=buildReadablePick(selectionDetails[0]);
+      if(enriched){
+        out.pick=enriched;
+        out.selections=[enriched];
+      }
+    }
+
+    // If the ticket omitted a league but a per-leg market is uniquely tied to
+    // a sport, infer it after the structured parse as a second safe chance.
+    if(!out.sport){
+      const detailSports=uniq(selectionDetails
+        .map(x=>marketInfoFromLine(x.market))
+        .filter(Boolean)
+        .map(x=>x.sport)
+        .filter(Boolean));
+      if(detailSports.length===1){
+        out.sport=detailSports[0];
+        if(!out.found.includes("deporte")) out.found.push("deporte");
+      }
+    }
+
     // For parlays, if matchup rows are not visible, never fabricate teams.
     if(out.betType && !out.event){
       out.missingTeams=true;
@@ -3814,6 +4051,444 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     out.confidence=Math.min(100,Math.round(out.found.length/7*100));
     return out;
   }
+
+
+  /* ===== Universal Ticket Intelligence v2 =====
+   * Capa general por roles, mercados y evidencia.
+   * NO depende de jugadores/equipos concretos ni de un sportsbook concreto.
+   * Si no puede demostrar un campo, lo deja para revisión en vez de inventarlo.
+   */
+  const SMART_EXTENDED_MARKETS = [
+    /* Multi-stat / player props */
+    {label:"Hits + Runs + RBIs",re:/\b(?:hits?\s*\+\s*runs?\s*\+\s*rbis?|hrr)\b/i,sport:"MLB"},
+    {label:"Runs + Hits + RBIs",re:/\b(?:runs?\s*\+\s*hits?\s*\+\s*rbis?)\b/i,sport:"MLB"},
+    {label:"Singles",re:/\bsingles?\b/i,sport:"MLB"},
+    {label:"Doubles",re:/\bdoubles?\b/i,sport:"MLB"},
+    {label:"Triples",re:/\btriples?\b/i,sport:"MLB"},
+    {label:"Walks",re:/\b(?:walks?|bases?\s+on\s+balls?)\b/i,sport:"MLB"},
+    {label:"Pitching Outs",re:/\b(?:pitching\s+outs?|outs?\s+recorded)\b/i,sport:"MLB"},
+    {label:"Hits Allowed",re:/\bhits?\s+allowed\b/i,sport:"MLB"},
+
+    /* Basketball */
+    {label:"Points + Rebounds + Assists",re:/\b(?:points?\s*(?:\+|and)\s*rebounds?\s*(?:\+|and)\s*assists?|pra)\b/i,sport:"Basketball"},
+    {label:"Points + Rebounds",re:/\bpoints?\s*(?:\+|and)\s*rebounds?\b/i,sport:"Basketball"},
+    {label:"Points + Assists",re:/\bpoints?\s*(?:\+|and)\s*assists?\b/i,sport:"Basketball"},
+    {label:"Rebounds + Assists",re:/\brebounds?\s*(?:\+|and)\s*assists?\b/i,sport:"Basketball"},
+    {label:"3-Pointers Made",re:/\b(?:3|three)[ -]?(?:pointers?|pt(?:ers?)?)\s+(?:made|scored)\b|\b3pm\b/i,sport:"Basketball"},
+    {label:"Free Throws Made",re:/\bfree\s+throws?\s+made\b/i,sport:"Basketball"},
+    {label:"Turnovers",re:/\bturnovers?\b/i,sport:"Basketball"},
+    {label:"Double Double",re:/\bdouble[ -]?double\b/i,sport:"Basketball"},
+    {label:"Triple Double",re:/\btriple[ -]?double\b/i,sport:"Basketball"},
+
+    /* American football */
+    {label:"Pass Attempts",re:/\bpass(?:ing)?\s+attempts?\b/i,sport:"NFL"},
+    {label:"Interceptions Thrown",re:/\binterceptions?\s+thrown\b/i,sport:"NFL"},
+    {label:"Longest Completion",re:/\blongest\s+(?:pass|completion)\b/i,sport:"NFL"},
+    {label:"Longest Reception",re:/\blongest\s+reception\b/i,sport:"NFL"},
+    {label:"Longest Rush",re:/\blongest\s+rush\b/i,sport:"NFL"},
+    {label:"Rushing Attempts",re:/\brushing\s+attempts?\b|\bcarries\b/i,sport:"NFL"},
+    {label:"Receiving Targets",re:/\b(?:receiving\s+)?targets?\b/i,sport:"NFL"},
+    {label:"Anytime Touchdown",re:/\b(?:anytime\s+)?(?:touchdown|td)\s+(?:scorer|score)\b/i,sport:"NFL"},
+    {label:"First Touchdown",re:/\bfirst\s+(?:touchdown|td)\s+(?:scorer|score)\b/i,sport:"NFL"},
+
+    /* Soccer */
+    {label:"Player Shots",re:/\bplayer\s+shots?\b|\bshots?\s+attempted\b/i,sport:"Soccer"},
+    {label:"Shots on Target",re:/\bshots?\s+(?:on\s+target|on\s+goal)\b/i,sport:"Soccer"},
+    {label:"Player Assists",re:/\bplayer\s+assists?\b/i,sport:"Soccer"},
+    {label:"Goals + Assists",re:/\bgoals?\s*(?:\+|and)\s*assists?\b/i,sport:"Soccer"},
+    {label:"Anytime Goalscorer",re:/\b(?:anytime\s+)?goal\s*scorer\b|\bto\s+score(?:\s+anytime)?\b/i,sport:"Soccer"},
+    {label:"First Goalscorer",re:/\bfirst\s+goal\s*scorer\b|\bfirst\s+to\s+score\b/i,sport:"Soccer"},
+    {label:"Both Teams to Score",re:/\b(?:both\s+teams\s+to\s+score|btts)\b/i,sport:"Soccer"},
+    {label:"Clean Sheet",re:/\bclean\s+sheet\b/i,sport:"Soccer"},
+    {label:"Match Result",re:/\b(?:match\s+result|three\s+way|3-way)\b/i,sport:"Soccer"},
+
+    /* Hockey */
+    {label:"Player Points",re:/\bplayer\s+points?\b/i,sport:"NHL"},
+    {label:"Player Assists",re:/\bplayer\s+assists?\b/i,sport:"NHL"},
+    {label:"Player Goals",re:/\bplayer\s+goals?\b/i,sport:"NHL"},
+    {label:"Power Play Points",re:/\bpower\s+play\s+points?\b/i,sport:"NHL"},
+    {label:"Blocked Shots",re:/\bblocked\s+shots?\b/i,sport:"NHL"},
+    {label:"Goalie Saves",re:/\b(?:goalie\s+)?saves?\b/i,sport:"NHL"},
+
+    /* Tennis */
+    {label:"Total Games",re:/\btotal\s+games?\b/i,sport:"Tennis"},
+    {label:"Game Handicap",re:/\bgames?\s+handicap\b/i,sport:"Tennis"},
+    {label:"Set Handicap",re:/\bsets?\s+handicap\b/i,sport:"Tennis"},
+    {label:"Total Sets",re:/\btotal\s+sets?\b/i,sport:"Tennis"},
+    {label:"First Set Winner",re:/\b(?:1st|first)\s+set\s+winner\b/i,sport:"Tennis"},
+    {label:"Breaks of Serve",re:/\bbreaks?\s+of\s+serve\b/i,sport:"Tennis"},
+
+    /* Combat */
+    {label:"Total Rounds",re:/\btotal\s+rounds?\b/i,sport:"Combat"},
+    {label:"Round Winner",re:/\bround\s+\d+\s+winner\b/i,sport:"Combat"},
+    {label:"Fight Goes Distance",re:/\b(?:fight\s+)?(?:goes|to\s+go)\s+(?:the\s+)?distance\b/i,sport:"Combat"},
+    {label:"Method of Victory",re:/\bmethod\s+of\s+victory\b/i,sport:"Combat"},
+    {label:"Knockdowns",re:/\bknockdowns?\b/i,sport:"Combat"},
+    {label:"Significant Strikes",re:/\bsignificant\s+strikes?\b/i,sport:"Combat"},
+    {label:"Takedowns",re:/\btakedowns?\b/i,sport:"Combat"},
+
+    /* Golf */
+    {label:"Tournament Winner",re:/\b(?:tournament|event)\s+winner\b|\boutright\b/i,sport:"Golf"},
+    {label:"Top 5 Finish",re:/\btop\s*5\s+finish\b/i,sport:"Golf"},
+    {label:"Top 10 Finish",re:/\btop\s*10\s+finish\b/i,sport:"Golf"},
+    {label:"Top 20 Finish",re:/\btop\s*20\s+finish\b/i,sport:"Golf"},
+    {label:"Make the Cut",re:/\bmake\s+(?:the\s+)?cut\b/i,sport:"Golf"},
+    {label:"Miss the Cut",re:/\bmiss\s+(?:the\s+)?cut\b/i,sport:"Golf"},
+    {label:"Round Score",re:/\bround\s+(?:score|strokes?)\b/i,sport:"Golf"},
+    {label:"Birdies",re:/\bbirdies?\b/i,sport:"Golf"},
+
+    /* Cricket */
+    {label:"Player Runs",re:/\bplayer\s+runs?\b|\bbatter\s+runs?\b/i,sport:"Cricket"},
+    {label:"Wickets",re:/\bwickets?\b/i,sport:"Cricket"},
+    {label:"Sixes",re:/\bsixes?\b/i,sport:"Cricket"},
+    {label:"Fours",re:/\bfours?\b/i,sport:"Cricket"},
+    {label:"Total Runs",re:/\b(?:match|team)\s+total\s+runs?\b/i,sport:"Cricket"},
+
+    /* Volleyball */
+    {label:"Total Sets",re:/\btotal\s+sets?\b/i,sport:"Volleyball"},
+    {label:"Set Winner",re:/\bset\s+\d+\s+winner\b/i,sport:"Volleyball"},
+    {label:"Point Spread",re:/\bpoints?\s+spread\b/i,sport:"Volleyball"},
+
+    /* Table tennis */
+    {label:"Total Points",re:/\btotal\s+points?\b/i,sport:"Table Tennis"},
+    {label:"Game Winner",re:/\bgame\s+\d+\s+winner\b/i,sport:"Table Tennis"},
+
+    /* Motorsports */
+    {label:"Race Winner",re:/\brace\s+winner\b/i,sport:"Motorsports"},
+    {label:"Podium Finish",re:/\bpodium\s+finish\b/i,sport:"Motorsports"},
+    {label:"Top 10 Finish",re:/\btop\s*10\s+finish\b/i,sport:"Motorsports"},
+    {label:"Head to Head",re:/\bhead\s+to\s+head\b|\bh2h\b/i,sport:"Motorsports"},
+
+    /* Esports */
+    {label:"Map Winner",re:/\bmap\s+\d+\s+winner\b/i,sport:"Esports"},
+    {label:"Total Maps",re:/\btotal\s+maps?\b/i,sport:"Esports"},
+    {label:"Map Handicap",re:/\bmap\s+handicap\b/i,sport:"Esports"},
+    {label:"Kills",re:/\bkills?\b/i,sport:"Esports"},
+
+    /* Generic structures */
+    {label:"First Quarter",re:/\b(?:1st|first)\s+quarter\b/i},
+    {label:"First Half",re:/\b(?:1st|first)\s+half\b/i},
+    {label:"Second Half",re:/\b(?:2nd|second)\s+half\b/i},
+    {label:"First Period",re:/\b(?:1st|first)\s+period\b/i},
+    {label:"First Inning",re:/\b(?:1st|first)\s+inning\b/i,sport:"MLB"},
+    {label:"Team Total",re:/\bteam\s+total\b/i},
+    {label:"Alternate Total",re:/\balt(?:ernate)?\s+total\b/i},
+    {label:"Alternate Spread",re:/\balt(?:ernate)?\s+spread\b/i},
+    {label:"Moneyline",re:/\b(?:money\s*line|moneyline)\b/i},
+    {label:"Spread",re:/\bspread\b/i},
+    {label:"Handicap",re:/\bhandicap\b/i},
+    {label:"Total",re:/\b(?:game|match)?\s*total\b/i}
+  ];
+
+  const SMART_SPORT_ALIASES = [
+    ["Basketball",/\b(?:NBA|WNBA|NCAAB|NCAA\s+BASKETBALL|EUROLEAGUE|BASKETBALL|BALONCESTO)\b/i],
+    ["NFL",/\b(?:NFL|NCAAF|COLLEGE\s+FOOTBALL|AMERICAN\s+FOOTBALL)\b/i],
+    ["MLB",/\b(?:MLB|BASEBALL|BEISBOL|KBO|NPB)\b/i],
+    ["NHL",/\b(?:NHL|HOCKEY|ICE\s+HOCKEY)\b/i],
+    ["Soccer",/\b(?:SOCCER|F[ÚU]TBOL|FOOTBALL|EPL|PREMIER\s+LEAGUE|LALIGA|SERIE\s+A|BUNDESLIGA|LIGUE\s+1|MLS|UEFA|CHAMPIONS\s+LEAGUE)\b/i],
+    ["Tennis",/\b(?:TENNIS|TENIS|ATP|WTA|CHALLENGER)\b/i],
+    ["Combat",/\b(?:UFC|MMA|BOXING|BOXEO|BELLATOR|PFL)\b/i],
+    ["Golf",/\b(?:PGA|LPGA|GOLF|LIV\s+GOLF)\b/i],
+    ["Cricket",/\b(?:CRICKET|IPL|T20|ODI)\b/i],
+    ["Volleyball",/\b(?:VOLLEYBALL|VOLEIBOL)\b/i],
+    ["Table Tennis",/\b(?:TABLE\s+TENNIS|PING\s*PONG)\b/i],
+    ["Motorsports",/\b(?:FORMULA\s*1|F1|NASCAR|INDYCAR|MOTOGP|MOTORSPORT)\b/i],
+    ["Esports",/\b(?:ESPORTS?|CS2|CS:GO|LEAGUE\s+OF\s+LEGENDS|LOL|DOTA\s*2|VALORANT|CALL\s+OF\s+DUTY)\b/i]
+  ];
+
+  const __baseMarketInfoFromLine = marketInfoFromLine;
+  marketInfoFromLine = function(line){
+    const v=String(line||"").replace(/\s+/g," ").trim();
+    if(!v || badTicketLine(v) || looksLikeEvent(v)) return null;
+
+    for(const rule of SMART_EXTENDED_MARKETS){
+      const m=v.match(rule.re);
+      if(!m) continue;
+      let before=cleanMarketSubject(v.slice(0,m.index));
+      let after=cleanMarketSubject(v.slice((m.index||0)+m[0].length));
+
+      // "MARKET - Player Name" is as common as "Player Name - MARKET".
+      let subject="";
+      if(before && !/^(?:over|under|yes|no|draw|alt|alternate|player|team)$/i.test(before)){
+        subject=before;
+      }else if(after &&
+        !/^(?:over|under)\b/i.test(after) &&
+        !/^[+-]?\d+(?:\.\d+)?(?:\s+[+-]\d{3,4})?$/.test(after) &&
+        !/\b(?:today|tomorrow|am|pm|edt|est|cst|pst)\b/i.test(after)){
+        subject=after.replace(/^[\-–—:]+\s*/,"").trim();
+      }
+
+      return {label:rule.label,subject,sport:rule.sport||null,raw:v,trailing:after,known:true};
+    }
+
+    const base=__baseMarketInfoFromLine(v);
+    if(base) return {...base,known:true};
+    return null;
+  };
+
+  function smartUnknownDescriptor(line){
+    const v=String(line||"").replace(/\s+/g," ").trim();
+    if(!v || v.length<3 || v.length>110) return null;
+    if(badTicketLine(v) || looksLikeEvent(v) || /\$\s*\d/.test(v)) return null;
+    if(/\b\d{1,2}:\d{2}\s*(?:am|pm)?\b/i.test(v)) return null;
+    if(/^(?:over|under)\s*\d+(?:\.\d+)?(?:\s+[+-]\d{3,4})?$/i.test(v)) return null;
+    if(/^[+-]\d{3,4}$/.test(v)) return null;
+
+    const letters=(v.match(/[A-Za-zÀ-ÿ]/g)||[]).length;
+    if(letters<3) return null;
+
+    // Ticket market headers tend to be uppercase or separated from a subject by
+    // hyphen/colon. Preserve unknown markets instead of throwing them away.
+    const alpha=v.replace(/[^A-Za-zÀ-ÿ]/g,"");
+    const upper=alpha && alpha===alpha.toUpperCase();
+    const separator=/\s[-–—:]\s/.test(v);
+    const marketWords=/\b(?:total|winner|score|scorer|shots?|yards?|points?|runs?|goals?|assists?|rebounds?|hits?|bases?|saves?|sets?|games?|maps?|kills?|rounds?|strokes?|touchdowns?|receptions?|attempts?|made|recorded|handicap|spread)\b/i.test(v);
+
+    if(!(upper || separator || marketWords)) return null;
+
+    let subject="",label=v;
+    const split=v.split(/\s[-–—:]\s/).map(x=>x.trim()).filter(Boolean);
+    if(split.length>=2){
+      // Prefer the side containing market vocabulary as the market.
+      const marketIx=split.findIndex(x=>/\b(?:total|winner|score|scorer|shots?|yards?|points?|runs?|goals?|assists?|rebounds?|hits?|bases?|saves?|sets?|games?|maps?|kills?|rounds?|strokes?|touchdowns?|receptions?|attempts?|made|recorded|handicap|spread)\b/i.test(x));
+      if(marketIx>=0){
+        label=split[marketIx];
+        subject=split.filter((_,i)=>i!==marketIx).join(" - ");
+      }
+    }
+    return {label:cleanMarketSubject(label),subject:cleanMarketSubject(subject),sport:null,raw:v,trailing:"",known:false};
+  }
+
+  function smartMarketInfo(line){
+    return marketInfoFromLine(line) || smartUnknownDescriptor(line);
+  }
+
+  function smartSelectionInfo(line){
+    const v=String(line||"").replace(/\s+/g," ").trim();
+    if(!v || badTicketLine(v) || looksLikeEvent(v) || /\$\s*\d/.test(v)) return null;
+
+    const oddsMatch=v.match(/(?:^|\s)([+-]\s*\d{3,4})\s*$/);
+    const odds=oddsMatch ? cleanOdds(oddsMatch[1]) : null;
+    const core=selectionCoreFromLine(v);
+    if(core) return {selection:core,odds,raw:v};
+
+    // Common winner / side selections with American odds.
+    if(odds!=null){
+      const noOdds=v.replace(/\s+[+-]\s*\d{3,4}\s*$/,"").trim();
+      if(noOdds && !badTicketLine(noOdds)) return {selection:noOdds,odds,raw:v};
+    }
+
+    // Yes/No, draw and common binary outcomes.
+    if(/^(?:yes|no|draw|tie|home|away)(?:\s+[+-]\d{3,4})?$/i.test(v)){
+      return {selection:v.replace(/\s+[+-]\d{3,4}\s*$/,"").trim(),odds,raw:v};
+    }
+    return null;
+  }
+
+  function smartSportFromEvidence(text,details,currentSport){
+    if(currentSport && currentSport!=="Otro") return {sport:currentSport,confidence:"explicit"};
+
+    const scores=new Map();
+    const add=(sport,pts)=>{
+      if(!sport) return;
+      scores.set(sport,(scores.get(sport)||0)+pts);
+    };
+
+    for(const [sport,re] of SMART_SPORT_ALIASES){
+      if(re.test(text)) add(sport,10);
+    }
+
+    (details||[]).forEach(d=>{
+      const mi=smartMarketInfo(d.market);
+      if(mi?.sport) add(mi.sport,5);
+    });
+
+    // Basketball-only evidence that old generic market rules intentionally did not infer.
+    if(/\b(?:rebounds?|3[- ]?pointers?|double[- ]double|triple[- ]double|free throws?|turnovers?)\b/i.test(text)) add("Basketball",4);
+
+    const ranked=[...scores.entries()].sort((a,b)=>b[1]-a[1]);
+    if(!ranked.length) return {sport:null,confidence:"unknown"};
+    if(ranked.length>1 && ranked[0][1]===ranked[1][1]) return {sport:null,confidence:"ambiguous"};
+    return {sport:ranked[0][0],confidence:ranked[0][1]>=8?"strong":"market"};
+  }
+
+  function smartDescriptorScore(line){
+    const mi=smartMarketInfo(line);
+    if(mi) return mi.known ? 10 : 6;
+    return 0;
+  }
+
+  function smartBuildDetails(text,legacy){
+    const lines=normalizeOCR(text).split("\n").map(x=>x.trim()).filter(Boolean);
+    const selRows=[];
+    for(let i=0;i<lines.length;i++){
+      const si=smartSelectionInfo(lines[i]);
+      if(si) selRows.push({i,...si});
+    }
+    if(!selRows.length) return Array.isArray(legacy?.selectionDetails)?legacy.selectionDetails:[];
+
+    const details=[];
+    for(let r=0;r<selRows.length;r++){
+      const row=selRows[r];
+      const prev=r?selRows[r-1].i:-1;
+      const next=r+1<selRows.length?selRows[r+1].i:lines.length;
+      let bestMarket="",bestScore=0,event="",time="";
+
+      // Search the local selection block in both directions. This handles:
+      // MARKET -> selection, selection -> MARKET and Player - MARKET layouts.
+      const start=Math.max(prev+1,row.i-4);
+      const end=Math.min(next-1,row.i+5);
+      for(let j=start;j<=end;j++){
+        if(j===row.i) continue;
+        const line=lines[j];
+        if(!event && looksLikeEvent(line)) event=line;
+        if(!time && /\b(?:today|tomorrow|hoy|mañana)?\s*\d{1,2}:\d{2}\s*(?:am|pm)?(?:\s+[A-Z]{2,5})?\b/i.test(line)) time=line;
+
+        const score=smartDescriptorScore(line) - Math.abs(j-row.i)*0.35;
+        if(score>bestScore){
+          bestScore=score;
+          bestMarket=line;
+        }
+      }
+
+      // Prefer the matching event from the legacy forward-only parser when it has one.
+      const legacyLeg=legacy?.selectionDetails?.[r];
+      if(legacyLeg?.event) event=legacyLeg.event;
+      if(legacyLeg?.market && smartDescriptorScore(legacyLeg.market)>=bestScore){
+        bestMarket=legacyLeg.market;
+      }
+      if(legacyLeg?.time) time=legacyLeg.time;
+
+      details.push({
+        selection:row.selection,
+        market:bestMarket,
+        event:event || legacy?.selectionDetails?.[r]?.event || "",
+        odds:row.odds ?? legacy?.selectionDetails?.[r]?.odds ?? null,
+        time,
+        index:r+1
+      });
+    }
+
+    // Deduplicate repeated summary/expanded rows conservatively.
+    const seen=new Set();
+    return details.filter(d=>{
+      const k=[
+        String(d.selection||"").toLowerCase(),
+        String(d.market||"").toLowerCase(),
+        String(d.event||"").toLowerCase(),
+        d.odds??""
+      ].join("|");
+      if(seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }
+
+  function smartReadablePick(detail){
+    if(!detail) return "";
+    const selection=String(detail.selection||"").trim();
+    const mi=smartMarketInfo(detail.market);
+    if(!mi) return selection;
+
+    let label=String(mi.label||"").trim();
+    let subject=String(mi.subject||"").trim();
+
+    // If an unknown descriptor is the entire market line, keep it intact rather
+    // than pretending we understood more than we did.
+    if(!mi.known){
+      const raw=String(detail.market||"").trim();
+      return raw ? `${selection} · ${raw}` : selection;
+    }
+
+    const sLow=selection.toLowerCase();
+    const parts=[];
+    if(subject && !sLow.includes(subject.toLowerCase())) parts.push(subject);
+    let core=selection;
+    if(label && !sLow.includes(label.toLowerCase())) core=`${core} ${label}`.trim();
+    parts.push(core);
+    return parts.join(" · ");
+  }
+
+  const __baseParseTicketText = parseTicketText;
+  parseTicketText = function(rawText){
+    const text=normalizeOCR(rawText);
+    const out=__baseParseTicketText(text);
+
+    const smartDetails=smartBuildDetails(text,out);
+    if(smartDetails.length){
+      // Respect a proven parlay leg count, but never use it to fabricate legs.
+      out.selectionDetails=out.legs ? smartDetails.slice(0,out.legs) : smartDetails;
+
+      const enriched=out.selectionDetails.map(smartReadablePick).filter(Boolean);
+      if(out.selectionDetails.length===1 && enriched[0]){
+        out.pick=enriched[0];
+        out.selections=[enriched[0]];
+        if(!out.betType) out.betType="Apuesta simple";
+      }else if(out.selectionDetails.length>1){
+        // Preserve the compact parlay field but make each stored leg intelligent.
+        if(!out.legs && /\b(?:parlay|accumulator|acca|combo|same\s+game|sgp|bet\s+builder)\b/i.test(text)){
+          out.legs=out.selectionDetails.length;
+        }
+        if(out.legs){
+          out.pick=out.selectionDetails.map(x=>String(x.selection||"").trim()).filter(Boolean).join(" + ");
+        }
+      }
+    }
+
+    const sportEvidence=smartSportFromEvidence(text,out.selectionDetails,out.sport);
+    if(sportEvidence.sport){
+      // Keep legacy names where the form has them; generic Basketball/Combat
+      // remain "Otro" unless an explicit league is present.
+      const formSports=[...$("fSport").options].map(o=>o.value);
+      const direct=formSports.find(x=>x.toLowerCase()===sportEvidence.sport.toLowerCase());
+      if(direct){
+        out.sport=direct;
+      }else if(sportEvidence.sport==="Basketball"){
+        const explicitNBA=/\bNBA\b/i.test(text), explicitNCAA=/\bNCAAB\b|\bNCAA\s+BASKETBALL\b/i.test(text);
+        out.sport=explicitNBA?"NBA":explicitNCAA?"NCAAB":null;
+      }else if(sportEvidence.sport==="Combat"){
+        out.sport=/\bUFC\b|\bMMA\b/i.test(text)?"UFC":null;
+      }else{
+        out.sport=null;
+      }
+      if(out.sport && !out.found.includes("deporte")) out.found.push("deporte");
+    }
+
+    // Evidence-based review flags. They are informational and prevent silent guesses.
+    const review=[];
+    if(!out.sport) review.push("deporte");
+    if(!out.book) review.push("sportsbook");
+    if(!out.event) review.push("evento");
+    if(!out.pick) review.push("selección");
+    if(out.odds==null) review.push("cuota");
+    if(out.stake==null) review.push("stake");
+
+    (out.selectionDetails||[]).forEach((leg,i)=>{
+      if(!leg.market && /^(?:over|under)\b|\d+\+$/i.test(String(leg.selection||""))){
+        review.push(`mercado selección ${i+1}`);
+      }
+      const mi=smartMarketInfo(leg.market);
+      if(mi && !mi.known) review.push(`confirmar mercado selección ${i+1}`);
+    });
+
+    out.reviewFields=uniq(review);
+    out.needsReview=out.reviewFields.length>0;
+
+    // Confidence is evidence-based, not just field count.
+    let score=0;
+    if(out.ticketId) score+=8;
+    if(out.book) score+=8;
+    if(out.sport) score+=10;
+    if(out.event) score+=18;
+    if(out.pick) score+=18;
+    if(out.odds!=null) score+=14;
+    if(out.stake!=null) score+=14;
+    if(out.payout!=null) score+=5;
+    if((out.selectionDetails||[]).some(x=>x.market)) score+=5;
+    out.confidence=Math.min(100,score);
+
+    return out;
+  };
 
   function appendUniqueNote(parts, value){
     const clean=String(value||"").trim();
@@ -3967,6 +4642,12 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     }
     if(!parsed.book){
       warnings.push("El texto no identifica la casa de apuestas. Escríbela manualmente si no viene incluida al compartir.");
+    }
+    if(Array.isArray(parsed.reviewFields) && parsed.reviewFields.length){
+      const extra=parsed.reviewFields.filter(x=>!["deporte","sportsbook"].includes(x));
+      if(extra.length){
+        warnings.push(`Revisa: ${extra.join(", ")}. MyBankRoll prefirió dejar estos datos para confirmación antes que inventarlos.`);
+      }
     }
     if(warnings.length){
       guide.classList.add("show");
