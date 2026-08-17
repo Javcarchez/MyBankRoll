@@ -4701,9 +4701,216 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     return res?.data || {text:"",confidence:0};
   }
 
-  let scanInProgress=false;
+  const GEMINI_TICKET_ENDPOINT="https://mybankroll-gemini.javcarchez.workers.dev/";
+  let geminiScanInProgress=false;
+
+  function fileToBase64(file){
+    return new Promise((resolve,reject)=>{
+      const reader=new FileReader();
+      reader.onload=()=>{
+        const value=String(reader.result||"");
+        const comma=value.indexOf(",");
+        if(comma<0) return reject(new Error("IMAGE_ENCODING_FAILED"));
+        resolve(value.slice(comma+1));
+      };
+      reader.onerror=()=>reject(new Error("IMAGE_ENCODING_FAILED"));
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function normalizeGeminiSport(value){
+    const raw=String(value||"").trim();
+    if(!raw) return null;
+    const key=raw.toLowerCase();
+    const direct={
+      nba:"NBA", nfl:"NFL", mlb:"MLB", nhl:"NHL",
+      soccer:"Soccer", football:"Soccer", futbol:"Soccer", fútbol:"Soccer",
+      tennis:"Tennis", tenis:"Tennis", ufc:"UFC", mma:"UFC",
+      ncaab:"NCAAB"
+    };
+    return direct[key] || raw;
+  }
+
+  function geminiTicketToScannerData(ticket){
+    const legs=Array.isArray(ticket?.legs) ? ticket.legs : [];
+    const selectionDetails=legs.map((leg,index)=>({
+      index:index+1,
+      selection:String(leg?.selection||"").trim(),
+      market:String(leg?.market||"").trim(),
+      event:String(leg?.event||"").trim(),
+      odds:Number.isFinite(Number(leg?.odds)) ? Number(leg.odds) : null,
+      time:String(leg?.time||"").trim()
+    }));
+
+    const events=[...new Set(selectionDetails.map(x=>x.event).filter(Boolean))];
+    const selections=selectionDetails.map(x=>x.selection).filter(Boolean);
+    const isParlay=legs.length>1 || /parlay/i.test(String(ticket?.betType||""));
+    const betType=isParlay
+      ? `Parlay de ${Math.max(legs.length,2)} selecciones`
+      : (String(ticket?.betType||"").trim() || null);
+
+    return {
+      source:"gemini",
+      documentType:ticket?.documentType||null,
+      book:String(ticket?.sportsbook||"").trim() || null,
+      sport:normalizeGeminiSport(ticket?.sport),
+      betType,
+      odds:Number.isFinite(Number(ticket?.totalOdds)) ? Number(ticket.totalOdds) : null,
+      stake:Number.isFinite(Number(ticket?.stake)) ? Number(ticket.stake) : null,
+      payout:Number.isFinite(Number(ticket?.payout)) ? Number(ticket.payout) : null,
+      ticketId:ticket?.ticketId!=null ? String(ticket.ticketId).trim() : null,
+      event:events.join(" - "),
+      pick:selections.join(" + "),
+      selections,
+      selectionDetails,
+      legs:legs.length,
+      confidence:Number.isFinite(Number(ticket?.confidence))
+        ? Math.round(Number(ticket.confidence)*100)
+        : null,
+      reviewFields:Array.isArray(ticket?.uncertainFields) ? ticket.uncertainFields : [],
+      inferredFields:Array.isArray(ticket?.inferredFields) ? ticket.inferredFields : [],
+      missingTeams:selectionDetails.some(x=>!x.event),
+      settledResult:null
+    };
+  }
+
+  async function readTicketWithGemini(file){
+    const imageBase64=await fileToBase64(file);
+    const response=await fetch(GEMINI_TICKET_ENDPOINT,{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({
+        imageBase64,
+        mimeType:["image/jpeg","image/png","image/webp"].includes(file.type)
+          ? file.type
+          : "image/jpeg"
+      })
+    });
+
+    let payload=null;
+    try{ payload=await response.json(); }catch(_){}
+
+    if(!response.ok || !payload?.ok || !payload?.ticket){
+      const detail=payload?.geminiError || payload?.error || `HTTP ${response.status}`;
+      throw new Error(`GEMINI_FAILED: ${detail}`);
+    }
+    return geminiTicketToScannerData(payload.ticket);
+  }
+
+  function showGeminiResult(parsed){
+    const result=$("scanResult"), guide=$("scanGuidance"), raw=$("scanRawText"),
+          title=$("scanStatusTitle"), status=$("scanStatusText"), bar=$("scanProgressBar");
+
+    lastScanMeta=parsed;
+    applyScannedTicket(parsed);
+    renderScanDetected(parsed);
+
+    bar.style.width="100%";
+    title.textContent="Listo · IA";
+    const confidence=Number.isFinite(parsed.confidence) ? `${parsed.confidence}%` : "alta";
+    status.textContent=`Ticket interpretado con Gemini · confianza ${confidence}`;
+
+    const essential=[parsed.odds!=null,parsed.stake!=null,parsed.event,parsed.pick];
+    const enough=essential.filter(Boolean).length>=4;
+
+    result.classList.add("show");
+    result.classList.toggle("warn",!enough);
+    result.textContent=enough
+      ? "Ticket leído con IA. Revisa los datos detectados antes de guardar."
+      : "La IA hizo una lectura parcial. Completa únicamente los campos que falten.";
+
+    const warnings=[];
+    const duplicate=existingBetWithTicketId(parsed.ticketId);
+    if(duplicate) warnings.push("Este ID de ticket ya aparece en tu historial. Revisa antes de guardarlo otra vez.");
+    if(!parsed.book) warnings.push("No pude confirmar la casa de apuestas. Complétala manualmente si corresponde.");
+    if(!parsed.sport) warnings.push("No pude confirmar el deporte. Selecciónalo manualmente.");
+    if(Array.isArray(parsed.reviewFields) && parsed.reviewFields.length){
+      warnings.push(`Revisa: ${parsed.reviewFields.join(", ")}.`);
+    }
+    if(Array.isArray(parsed.inferredFields) && parsed.inferredFields.length){
+      warnings.push(`Inferido por IA: ${parsed.inferredFields.join(", ")}.`);
+    }
+    if(warnings.length){
+      guide.classList.add("show");
+      guide.textContent=warnings.join(" ");
+    }
+
+    raw.textContent="Lectura estructurada de Gemini:\n\n"+JSON.stringify({
+      sportsbook:parsed.book,
+      betType:parsed.betType,
+      sport:parsed.sport,
+      totalOdds:parsed.odds,
+      stake:parsed.stake,
+      payout:parsed.payout,
+      ticketId:parsed.ticketId,
+      legs:parsed.selectionDetails
+    },null,2);
+    raw.classList.add("show");
+
+    toast(duplicate ? "Ticket IA · posible duplicado" : "Ticket leído con Gemini");
+  }
 
   async function scanTicketFile(file){
+    if(geminiScanInProgress || scanInProgress){
+      toast("Ya estoy analizando un ticket");
+      return;
+    }
+    if(!file || !file.type.startsWith("image/")){
+      toast("Selecciona una imagen del ticket");
+      return;
+    }
+
+    geminiScanInProgress=true;
+    $("scanCameraBtn").disabled=true;
+    $("scanGalleryBtn").disabled=true;
+    $("pasteTicketBtn").disabled=true;
+
+    const preview=$("ticketPreview"), img=$("ticketPreviewImg"), title=$("scanStatusTitle"),
+          status=$("scanStatusText"), bar=$("scanProgressBar"), result=$("scanResult"),
+          raw=$("scanRawText"), guide=$("scanGuidance");
+
+    preview.classList.add("show");
+    result.classList.remove("show","warn");
+    guide.classList.remove("show");
+    $("scanDetected").classList.remove("show");
+    raw.classList.remove("show");
+    bar.style.width="18%";
+    title.textContent="Analizando con IA…";
+    status.textContent="Gemini está interpretando el ticket completo.";
+
+    const objectUrl=URL.createObjectURL(file);
+    img.src=objectUrl;
+
+    try{
+      const parsed=await readTicketWithGemini(file);
+      showGeminiResult(parsed);
+    }catch(err){
+      console.warn("Gemini ticket reader:",err);
+      title.textContent="Usando lector alternativo…";
+      status.textContent="La IA no estuvo disponible. Continuando con OCR local.";
+      bar.style.width="4%";
+
+      geminiScanInProgress=false;
+      $("scanCameraBtn").disabled=false;
+      $("scanGalleryBtn").disabled=false;
+      $("pasteTicketBtn").disabled=false;
+      URL.revokeObjectURL(objectUrl);
+
+      return scanTicketFileOCR(file);
+    }finally{
+      if(geminiScanInProgress){
+        geminiScanInProgress=false;
+        $("scanCameraBtn").disabled=false;
+        $("scanGalleryBtn").disabled=false;
+        $("pasteTicketBtn").disabled=false;
+        setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+      }
+    }
+  }
+
+  let scanInProgress=false;
+
+  async function scanTicketFileOCR(file){
     if(scanInProgress){
       toast("Ya estoy analizando un ticket");
       return;
