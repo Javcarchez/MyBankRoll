@@ -4808,7 +4808,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     bar.style.width="100%";
     title.textContent="Listo · IA";
     const confidence=Number.isFinite(parsed.confidence) ? `${parsed.confidence}%` : "alta";
-    status.textContent=`Ticket interpretado con Gemini · confianza ${confidence}`;
+    status.textContent=`Ticket interpretado con IA · confianza ${confidence}`;
 
     const essential=[parsed.odds!=null,parsed.stake!=null,parsed.event,parsed.pick];
     const enough=essential.filter(Boolean).length>=4;
@@ -4835,19 +4835,10 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
       guide.textContent=warnings.join(" ");
     }
 
-    raw.textContent="Lectura estructurada de Gemini:\n\n"+JSON.stringify({
-      sportsbook:parsed.book,
-      betType:parsed.betType,
-      sport:parsed.sport,
-      totalOdds:parsed.odds,
-      stake:parsed.stake,
-      payout:parsed.payout,
-      ticketId:parsed.ticketId,
-      legs:parsed.selectionDetails
-    },null,2);
-    raw.classList.add("show");
+    raw.textContent="";
+    raw.classList.remove("show");
 
-    toast(duplicate ? "Ticket IA · posible duplicado" : "Ticket leído con Gemini");
+    toast(duplicate ? "Ticket IA · posible duplicado" : "Ticket leído con IA");
   }
 
   async function scanTicketFile(file){
@@ -4876,7 +4867,7 @@ html[data-theme="dark"] .bet-card.status-pending .bet-note-extra{
     raw.classList.remove("show");
     bar.style.width="18%";
     title.textContent="Analizando con IA…";
-    status.textContent="Gemini está interpretando el ticket completo.";
+    status.textContent="Leyendo y organizando los datos del ticket.";
 
     const objectUrl=URL.createObjectURL(file);
     img.src=objectUrl;
